@@ -4,71 +4,90 @@ import {
   useRef,
   type CSSProperties,
   type DragEvent,
-} from 'react'
-import * as signalR from '@microsoft/signalr'
+} from 'react';
+import * as signalR from '@microsoft/signalr';
 import {
   TransformWrapper,
   TransformComponent,
-} from 'react-zoom-pan-pinch'
-import TokenBox from './TokenBox'
+} from 'react-zoom-pan-pinch';
+import TokenBox from './TokenBox';
 
-const BACKEND_URL = 'http://localhost:5089'
+const BACKEND_URL = 'http://localhost:5089';
 
 type MapData = {
-  id: string
-  widthInPixels: number
-  heightInPixels: number
-  imageUrl: string
-  grid: GridData | null
-  tokens: Token[]
-  activeSpells: SpellEvent[]
-}
+  id: string;
+  widthInPixels: number;
+  heightInPixels: number;
+  imageUrl: string;
+  grid: GridData | null;
+  tokens: Token[];
+  activeSpells: SpellEvent[];
+};
 
 type GridData = {
-  cellSizeInPixels: number
-  offsetX?: number
-  offsetY?: number
-  lineColor?: string
-  lineOpacity?: number
-}
+  cellSizeInPixels: number;
+  offsetX?: number;
+  offsetY?: number;
+  lineColor?: string;
+  lineOpacity?: number;
+};
 
 type Token = {
-  id: string
-  name: string
-  gridX: number
-  gridY: number
-  sizeInCells?: number
-  isLocked?: boolean
-  isVisibleToPlayers?: boolean
-  characterId?: string | null
-  currentHp: number
-  maxHp: number
-  tokenImageUrl?: string | null
-}
+  id: string;
+  name: string;
+  gridX: number;
+  gridY: number;
+  sizeInCells?: number;
+  isLocked?: boolean;
+  isVisibleToPlayers?: boolean;
+  characterId?: string | null;
+  currentHp: number;
+  maxHp: number;
+  tokenImageUrl?: string | null;
+};
 
 type SpellEvent = {
-  id?: string
-  eventId?: string
-  activeSpellId?: string
-  originGridX?: number
-  originGridY?: number
-  targetGridX?: number
-  targetGridY?: number
-  radiusInCells?: number
-  colorHex?: string
-}
+  id?: string;
+  eventId?: string;
+  activeSpellId?: string;
+  originGridX?: number;
+  originGridY?: number;
+  targetGridX?: number;
+  targetGridY?: number;
+  radiusInCells?: number;
+  colorHex?: string;
+};
 
 type CurrentUser = {
-  playerId: string
-  playerName: string
-  isDungeonMaster: boolean
-  selectedCharacterId: string | null
-}
+  playerId: string;
+  playerName: string;
+  isDungeonMaster: boolean;
+  selectedCharacterId: string | null;
+};
 
 type ActiveMapProps = {
-  sessionId: string | null
-  mapId: string
-  currentUser: CurrentUser
+  sessionId: string | null;
+  mapId: string;
+  currentUser: CurrentUser;
+};
+
+// Generates a stable hue from the token name so similar tokens share a distinct theme
+function getTokenBackgroundColor(name = 'Token'): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash % 360);
+  return `radial-gradient(circle at 35% 35%, hsl(${hue}, 55%, 35%), hsl(${hue}, 65%, 15%))`;
+}
+
+// Extracts 1-2 character initials (e.g. "Goblin Boss" -> "GB", "Dragon" -> "DR")
+function getTokenInitials(name = 'T'): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length > 1 && parts[0] && parts[1]) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
 }
 
 export default function ActiveMap({
@@ -77,186 +96,120 @@ export default function ActiveMap({
   currentUser,
 }: ActiveMapProps) {
   // --- 1. STATE ---
-  const [mapData, setMapData] = useState<MapData | null>(null)
-  const [tokens, setTokens] = useState<Token[]>([])
-  const [grid, setGrid] = useState<GridData | null>(null)
-  const [activeSpells, setActiveSpells] = useState<SpellEvent[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [selectedToken, setSelectedToken] = useState<Token | null>(null)
+  const [mapData, setMapData] = useState<MapData | null>(null);
+  const [tokens, setTokens] = useState<Token[]>([]);
+  const [grid, setGrid] = useState<GridData | null>(null);
+  const [activeSpells, setActiveSpells] = useState<SpellEvent[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedToken, setSelectedToken] = useState<Token | null>(null);
 
   // References
-  const hubConnectionRef =
-    useRef<signalR.HubConnection | null>(null)
-
-  const mapContainerRef =
-    useRef<HTMLDivElement | null>(null)
+  const hubConnectionRef = useRef<signalR.HubConnection | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Derived loading state
-  const isLoading =
-    !mapData || mapData.id !== mapId
+  const isLoading = !mapData || mapData.id !== mapId;
 
   // --- 2. FETCH INITIAL MAP DATA ---
   useEffect(() => {
-    let isMounted = true
+    let isMounted = true;
 
     fetch(`${BACKEND_URL}/api/Map/${mapId}`)
       .then((res) => {
         if (!res.ok) {
-          throw new Error(
-            `Failed to load map: ${res.statusText}`,
-          )
+          throw new Error(`Failed to load map: ${res.statusText}`);
         }
-
-        return res.json()
+        return res.json();
       })
       .then((data: MapData) => {
-        if (!isMounted) return
-
-        setMapData(data)
-        setGrid(data.grid)
-        setTokens(data.tokens || [])
-        setActiveSpells(data.activeSpells || [])
-        setError(null)
+        if (!isMounted) return;
+        setMapData(data);
+        setGrid(data.grid);
+        setTokens(data.tokens || []);
+        setActiveSpells(data.activeSpells || []);
+        setError(null);
       })
       .catch((err: unknown) => {
-        if (!isMounted) return
-
-        console.error(err)
-
+        if (!isMounted) return;
+        console.error(err);
         if (err instanceof Error) {
-          setError(err.message)
+          setError(err.message);
         } else {
-          setError('Failed to load map.')
+          setError('Failed to load map.');
         }
-      })
+      });
 
     return () => {
-      isMounted = false
-    }
-  }, [mapId])
+      isMounted = false;
+    };
+  }, [mapId]);
 
   // --- 3. SIGNALR REAL-TIME SYNC ---
   useEffect(() => {
-    if (!sessionId) return
+    if (!sessionId) return;
 
-    const connection =
-      new signalR.HubConnectionBuilder()
-        .withUrl(`${BACKEND_URL}/hubs/map`, {
-          withCredentials: true,
-        })
-        .withAutomaticReconnect()
-        .build()
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl(`${BACKEND_URL}/hubs/map`, {
+        withCredentials: true,
+      })
+      .withAutomaticReconnect()
+      .build();
 
     connection.on(
       'TokenMoved',
-      (
-        tokenId: string,
-        newGridX: number,
-        newGridY: number,
-      ) => {
+      (tokenId: string, newGridX: number, newGridY: number) => {
         setTokens((prev) =>
           prev.map((token) =>
             token.id === tokenId
-              ? {
-                  ...token,
-                  gridX: newGridX,
-                  gridY: newGridY,
-                }
+              ? { ...token, gridX: newGridX, gridY: newGridY }
               : token,
           ),
-        )
+        );
 
         setSelectedToken((prev) =>
           prev && prev.id === tokenId
-            ? {
-                ...prev,
-                gridX: newGridX,
-                gridY: newGridY,
-              }
+            ? { ...prev, gridX: newGridX, gridY: newGridY }
             : prev,
-        )
+        );
       },
-    )
+    );
 
-    connection.on(
-      'TokenSpawned',
-      (newToken: Token) => {
-        setTokens((prev) => [...prev, newToken])
-      },
-    )
+    connection.on('TokenSpawned', (newToken: Token) => {
+      setTokens((prev) => [...prev, newToken]);
+    });
 
-    connection.on(
-      'TokenHpChanged',
-      (
-        tokenId: string,
-        newHp: number,
-      ) => {
-        setTokens((prev) =>
-          prev.map((token) =>
-            token.id === tokenId
-              ? {
-                  ...token,
-                  currentHp: newHp,
-                }
-              : token,
-          ),
-        )
+    connection.on('TokenHpChanged', (tokenId: string, newHp: number) => {
+      setTokens((prev) =>
+        prev.map((token) =>
+          token.id === tokenId ? { ...token, currentHp: newHp } : token,
+        ),
+      );
 
-        setSelectedToken((prev) =>
-          prev && prev.id === tokenId
-            ? {
-                ...prev,
-                currentHp: newHp,
-              }
-            : prev,
-        )
-      },
-    )
+      setSelectedToken((prev) =>
+        prev && prev.id === tokenId ? { ...prev, currentHp: newHp } : prev,
+      );
+    });
 
-    connection.on(
-      'TokenRemoved',
-      (tokenId: string) => {
-        setTokens((prev) =>
-          prev.filter((token) => token.id !== tokenId),
-        )
+    connection.on('TokenRemoved', (tokenId: string) => {
+      setTokens((prev) => prev.filter((token) => token.id !== tokenId));
+      setSelectedToken((prev) => (prev && prev.id === tokenId ? null : prev));
+    });
 
-        setSelectedToken((prev) =>
-          prev && prev.id === tokenId
-            ? null
-            : prev,
-        )
-      },
-    )
+    connection.on('GridUpdated', (updatedGrid: GridData) => {
+      setGrid(updatedGrid);
+    });
 
-    connection.on(
-      'GridUpdated',
-      (updatedGrid: GridData) => {
-        setGrid(updatedGrid)
-      },
-    )
+    connection.on('SpellCasted', (spellEvent: SpellEvent) => {
+      setActiveSpells((prev) => [...prev, spellEvent]);
+    });
 
-    connection.on(
-      'SpellCasted',
-      (spellEvent: SpellEvent) => {
-        setActiveSpells((prev) => [
-          ...prev,
-          spellEvent,
-        ])
-      },
-    )
-
-    connection.on(
-      'SpellDismissed',
-      (spellId: string) => {
-        setActiveSpells((prev) =>
-          prev.filter(
-            (spell) =>
-              spell.id !== spellId &&
-              spell.activeSpellId !== spellId,
-          ),
-        )
-      },
-    )
+    connection.on('SpellDismissed', (spellId: string) => {
+      setActiveSpells((prev) =>
+        prev.filter(
+          (spell) => spell.id !== spellId && spell.activeSpellId !== spellId,
+        ),
+      );
+    });
 
     connection
       .start()
@@ -266,247 +219,133 @@ export default function ActiveMap({
           sessionId,
           currentUser.playerId,
           currentUser.playerName,
-        )
+        );
       })
       .catch((err: unknown) => {
-        console.error(
-          'SignalR error:',
-          err,
-        )
-      })
+        console.error('SignalR error:', err);
+      });
 
-    hubConnectionRef.current = connection
+    hubConnectionRef.current = connection;
 
     return () => {
       if (hubConnectionRef.current) {
         hubConnectionRef.current
-          .invoke(
-            'LeaveSession',
-            sessionId,
-            currentUser.playerId,
-          )
+          .invoke('LeaveSession', sessionId, currentUser.playerId)
           .catch(() => {})
           .finally(() => {
-            hubConnectionRef.current?.stop()
-          })
+            hubConnectionRef.current?.stop();
+          });
       }
-    }
-  }, [
-    sessionId,
-    currentUser.playerId,
-    currentUser.playerName,
-  ])
+    };
+  }, [sessionId, currentUser.playerId, currentUser.playerName]);
 
   // --- 4. TOKEN DRAG & DROP WITH GEOMETRIC PROJECTION ---
   const canMoveToken = (token: Token) => {
-    if (currentUser?.isDungeonMaster) {
-      return true
-    }
+    if (currentUser?.isDungeonMaster) return true;
+    if (token.isLocked) return false;
+    return token.characterId === currentUser?.selectedCharacterId;
+  };
 
-    if (token.isLocked) {
-      return false
-    }
-
-    return (
-      token.characterId ===
-      currentUser?.selectedCharacterId
-    )
-  }
-
-  const handleDragStart = (
-    event: DragEvent<HTMLDivElement>,
-    token: Token,
-  ) => {
+  const handleDragStart = (event: DragEvent<HTMLDivElement>, token: Token) => {
     if (!canMoveToken(token)) {
-      event.preventDefault()
-      return
+      event.preventDefault();
+      return;
     }
+    event.dataTransfer.setData('text/plain', token.id);
+  };
 
-    event.dataTransfer.setData(
-      'text/plain',
-      token.id,
-    )
-  }
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+  };
 
-  const handleDragOver = (
-    event: DragEvent<HTMLDivElement>,
-  ) => {
-    event.preventDefault()
-  }
+  const handleDrop = async (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
 
-  const handleDrop = async (
-    event: DragEvent<HTMLDivElement>,
-  ) => {
-    event.preventDefault()
-
-    if (
-      !grid ||
-      !mapContainerRef.current ||
-      !mapData
-    ) {
-      return
-    }
+    if (!grid || !mapContainerRef.current || !mapData) return;
 
     // 1. Get real-time post-transform bounding rectangle
-    const rect =
-      mapContainerRef.current.getBoundingClientRect()
-
-    if (
-      !rect ||
-      rect.width === 0 ||
-      rect.height === 0
-    ) {
-      return
-    }
+    const rect = mapContainerRef.current.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return;
 
     // 2. Exact unscaled canvas coordinates
-    const canvasX =
-      ((event.clientX - rect.left) / rect.width) *
-      mapData.widthInPixels
+    const canvasX = ((event.clientX - rect.left) / rect.width) * mapData.widthInPixels;
+    const canvasY = ((event.clientY - rect.top) / rect.height) * mapData.heightInPixels;
 
-    const canvasY =
-      ((event.clientY - rect.top) / rect.height) *
-      mapData.heightInPixels
+    const cellSize = grid.cellSizeInPixels || 50;
 
-    const cellSize =
-      grid.cellSizeInPixels || 50
-
-    // 3. Offset by half cell
-    const tokenRadius = cellSize / 2
-
-    const dropCenterX =
-      canvasX - tokenRadius
-
-    const dropCenterY =
-      canvasY - tokenRadius
+    // 3. Offset by half cell so the center aligns with release point
+    const tokenRadius = cellSize / 2;
+    const dropCenterX = canvasX - tokenRadius;
+    const dropCenterY = canvasY - tokenRadius;
 
     // 4. Snap to nearest grid index
-    const targetGridX = Math.round(
-      (dropCenterX - (grid.offsetX || 0)) /
-        cellSize,
-    )
-
-    const targetGridY = Math.round(
-      (dropCenterY - (grid.offsetY || 0)) /
-        cellSize,
-    )
+    const targetGridX = Math.round((dropCenterX - (grid.offsetX || 0)) / cellSize);
+    const targetGridY = Math.round((dropCenterY - (grid.offsetY || 0)) / cellSize);
 
     // --- CASE A: Spawning a Monster from TokenBox ---
-    const monsterSpawnData =
-      event.dataTransfer.getData(
-        'application/vtt-spawn-monster',
-      )
-
+    const monsterSpawnData = event.dataTransfer.getData('application/vtt-spawn-monster');
     if (monsterSpawnData) {
-      const monster = JSON.parse(
-        monsterSpawnData,
-      ) as {
-        monsterIndex: number
-        name: string
-      }
+      const monster = JSON.parse(monsterSpawnData) as {
+        monsterIndex: string | number;
+        name: string;
+      };
 
       try {
-        const url = new URL(
-          `${BACKEND_URL}/api/Token/map/${mapId}/spawn-monster`,
-        )
-
-        if (sessionId) {
-          url.searchParams.append(
-            'sessionId',
-            sessionId,
-          )
-        }
+        const url = new URL(`${BACKEND_URL}/api/Token/map/${mapId}/spawn-monster`);
+        if (sessionId) url.searchParams.append('sessionId', sessionId);
 
         await fetch(url.toString(), {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            monsterIndex: monster.monsterIndex,
+            monsterIndex: String(monster.monsterIndex),
             gameSessionId: sessionId || null,
             gridX: targetGridX,
             gridY: targetGridY,
             customName: monster.name,
           }),
-        })
+        });
       } catch (err: unknown) {
-        console.error(
-          'Failed to spawn monster:',
-          err,
-        )
+        console.error('Failed to spawn monster:', err);
       }
-
-      return
+      return;
     }
 
     // --- CASE B: Placing a Character from TokenBox ---
-    const characterPlaceData =
-      event.dataTransfer.getData(
-        'application/vtt-place-character',
-      )
-
-    if (
-      characterPlaceData &&
-      sessionId
-    ) {
-      const character = JSON.parse(
-        characterPlaceData,
-      ) as {
-        characterId: string
-      }
+    const characterPlaceData = event.dataTransfer.getData('application/vtt-place-character');
+    if (characterPlaceData && sessionId) {
+      const character = JSON.parse(characterPlaceData) as { characterId: string };
 
       try {
-        const url = new URL(
-          `${BACKEND_URL}/api/Token/map/${mapId}/place-character`,
-        )
-
-        url.searchParams.append(
-          'sessionId',
-          sessionId,
-        )
+        const url = new URL(`${BACKEND_URL}/api/Token/map/${mapId}/place-character`);
+        url.searchParams.append('sessionId', sessionId);
 
         await fetch(url.toString(), {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            characterId:
-              character.characterId,
+            characterId: character.characterId,
             gameSessionId: sessionId,
             gridX: targetGridX,
             gridY: targetGridY,
           }),
-        })
+        });
       } catch (err: unknown) {
-        console.error(
-          'Failed to place character:',
-          err,
-        )
+        console.error('Failed to place character:', err);
       }
-
-      return
+      return;
     }
 
     // --- CASE C: Moving an Existing Board Token ---
-    const tokenId =
-      event.dataTransfer.getData(
-        'text/plain',
-      )
-
+    const tokenId = event.dataTransfer.getData('text/plain');
     if (tokenId) {
       setTokens((prev) =>
         prev.map((token) =>
           token.id === tokenId
-            ? {
-                ...token,
-                gridX: targetGridX,
-                gridY: targetGridY,
-              }
+            ? { ...token, gridX: targetGridX, gridY: targetGridY }
             : token,
         ),
-      )
+      );
 
       if (hubConnectionRef.current) {
         try {
@@ -516,46 +355,24 @@ export default function ActiveMap({
             tokenId,
             targetGridX,
             targetGridY,
-          )
+          );
         } catch (err: unknown) {
-          console.error(
-            'Failed to sync token move:',
-            err,
-          )
+          console.error('Failed to sync token move:', err);
         }
       }
     }
-  }
+  };
 
   // --- 5. RENDER ---
   if (error) {
-    return (
-      <div
-        style={{
-          color: '#ff6b6b',
-          padding: '20px',
-        }}
-      >
-        Error: {error}
-      </div>
-    )
+    return <div style={{ color: '#ff6b6b', padding: '20px' }}>Error: {error}</div>;
   }
 
   if (isLoading) {
-    return (
-      <div
-        style={{
-          color: '#fff',
-          padding: '20px',
-        }}
-      >
-        Loading Battle Map...
-      </div>
-    )
+    return <div style={{ color: '#fff', padding: '20px' }}>Loading Battle Map...</div>;
   }
 
-  const cellSize =
-    grid?.cellSizeInPixels || 50
+  const cellSize = grid?.cellSizeInPixels || 50;
 
   return (
     <div
@@ -579,11 +396,7 @@ export default function ActiveMap({
           excluded: ['vtt-token'],
         }}
       >
-        {({
-          zoomIn,
-          zoomOut,
-          resetTransform,
-        }) => (
+        {({ zoomIn, zoomOut, resetTransform }) => (
           <>
             {/* FLOATING ZOOM CONTROLS */}
             <div
@@ -594,12 +407,10 @@ export default function ActiveMap({
                 zIndex: 100,
                 display: 'flex',
                 gap: '8px',
-                background:
-                  'rgba(20, 20, 20, 0.85)',
+                background: 'rgba(20, 20, 20, 0.85)',
                 padding: '6px 10px',
                 borderRadius: '8px',
-                border:
-                  '1px solid rgba(255,255,255,0.15)',
+                border: '1px solid rgba(255,255,255,0.15)',
                 backdropFilter: 'blur(6px)',
               }}
             >
@@ -637,12 +448,7 @@ export default function ActiveMap({
             </div>
 
             {/* PAN & ZOOM CANVAS */}
-            <TransformComponent
-              wrapperStyle={{
-                width: '100%',
-                height: '100%',
-              }}
-            >
+            <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }}>
               <div
                 ref={mapContainerRef}
                 onDragOver={handleDragOver}
@@ -654,8 +460,7 @@ export default function ActiveMap({
                   backgroundImage: `url(${BACKEND_URL}${mapData.imageUrl})`,
                   backgroundSize: 'cover',
                   userSelect: 'none',
-                  boxShadow:
-                    '0 4px 20px rgba(0,0,0,0.8)',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.8)',
                   overflow: 'visible',
                 }}
               >
@@ -683,120 +488,71 @@ export default function ActiveMap({
                         <path
                           d={`M ${cellSize} 0 L 0 0 0 ${cellSize}`}
                           fill="none"
-                          stroke={
-                            grid.lineColor ||
-                            '#ffffff'
-                          }
+                          stroke={grid.lineColor || '#ffffff'}
                           strokeWidth="1"
-                          strokeOpacity={
-                            grid.lineOpacity ?? 0.3
-                          }
+                          strokeOpacity={grid.lineOpacity ?? 0.3}
                         />
                       </pattern>
                     </defs>
 
-                    <rect
-                      width="100%"
-                      height="100%"
-                      fill="url(#gridPattern)"
-                    />
+                    <rect width="100%" height="100%" fill="url(#gridPattern)" />
 
                     {/* Spell Templates */}
-                    {activeSpells.map(
-                      (spell) => {
-                        const originX =
-                          (grid.offsetX || 0) +
-                          (spell.originGridX ??
-                            spell.targetGridX ??
-                            0) *
-                            cellSize +
-                          cellSize / 2
+                    {activeSpells.map((spell) => {
+                      const originX =
+                        (grid.offsetX || 0) +
+                        (spell.originGridX ?? spell.targetGridX ?? 0) * cellSize +
+                        cellSize / 2;
 
-                        const originY =
-                          (grid.offsetY || 0) +
-                          (spell.originGridY ??
-                            spell.targetGridY ??
-                            0) *
-                            cellSize +
-                          cellSize / 2
+                      const originY =
+                        (grid.offsetY || 0) +
+                        (spell.originGridY ?? spell.targetGridY ?? 0) * cellSize +
+                        cellSize / 2;
 
-                        const radiusPx =
-                          (spell.radiusInCells ||
-                            1) * cellSize
+                      const radiusPx = (spell.radiusInCells || 1) * cellSize;
 
-                        return (
-                          <circle
-                            key={
-                              spell.id ||
-                              spell.eventId
-                            }
-                            cx={originX}
-                            cy={originY}
-                            r={radiusPx}
-                            fill={
-                              spell.colorHex ||
-                              '#ff0055'
-                            }
-                            fillOpacity={0.3}
-                            stroke={
-                              spell.colorHex ||
-                              '#ff0055'
-                            }
-                            strokeWidth={2}
-                          />
-                        )
-                      },
-                    )}
+                      return (
+                        <circle
+                          key={spell.id || spell.eventId}
+                          cx={originX}
+                          cy={originY}
+                          r={radiusPx}
+                          fill={spell.colorHex || '#ff0055'}
+                          fillOpacity={0.3}
+                          stroke={spell.colorHex || '#ff0055'}
+                          strokeWidth={2}
+                        />
+                      );
+                    })}
                   </svg>
                 )}
 
                 {/* TOKENS LAYER */}
                 {tokens.map((token) => {
-                  if (
-                    !token.isVisibleToPlayers &&
-                    !currentUser?.isDungeonMaster
-                  ) {
-                    return null
+                  if (!token.isVisibleToPlayers && !currentUser?.isDungeonMaster) {
+                    return null;
                   }
 
-                  const size =
-                    (token.sizeInCells || 1) *
-                    cellSize
-
-                  const left =
-                    (grid?.offsetX || 0) +
-                    token.gridX * cellSize
-
-                  const top =
-                    (grid?.offsetY || 0) +
-                    token.gridY * cellSize
-
-                  const draggable =
-                    canMoveToken(token)
-
-                  const isSelected =
-                    selectedToken?.id ===
-                    token.id
+                  const size = (token.sizeInCells || 1) * cellSize;
+                  const left = (grid?.offsetX || 0) + token.gridX * cellSize;
+                  const top = (grid?.offsetY || 0) + token.gridY * cellSize;
+                  const draggable = canMoveToken(token);
+                  const isSelected = selectedToken?.id === token.id;
+                  const hasImage = false;
+                  const tokenName = token.name || 'Token';
 
                   return (
                     <div
                       key={token.id}
                       className="vtt-token"
                       draggable={draggable}
-                      onDragStart={(event) =>
-                        handleDragStart(
-                          event,
-                          token,
-                        )
-                      }
+                      onDragStart={(event) => handleDragStart(event, token)}
                       onClick={() => {
-                        if (
-                          currentUser?.isDungeonMaster
-                        ) {
-                          setSelectedToken(token)
+                        if (currentUser?.isDungeonMaster) {
+                          setSelectedToken(token);
                         }
                       }}
-                      title={`${token.name} (${token.currentHp}/${token.maxHp} HP)`}
+                      title={`${tokenName} (${token.currentHp}/${token.maxHp} HP)`}
                       style={{
                         position: 'absolute',
                         left: `${left}px`,
@@ -804,68 +560,100 @@ export default function ActiveMap({
                         width: `${size}px`,
                         height: `${size}px`,
                         borderRadius: '50%',
-                        backgroundImage:
-                          token.tokenImageUrl
-                            ? `url(${token.tokenImageUrl})`
-                            : 'radial-gradient(circle, #e63946, #b7094c)',
-                        backgroundSize:
-                          'cover',
-                        backgroundPosition:
-                          'center',
+                        background: hasImage
+                          ? `url(${token.tokenImageUrl}) center/cover no-repeat`
+                          : getTokenBackgroundColor(tokenName),
                         border: isSelected
                           ? '3px solid #f59e0b'
                           : draggable
-                            ? '2px solid #52b788'
-                            : '2px solid #333',
+                          ? '2px solid #52b788'
+                          : '2px solid #444',
                         boxShadow: isSelected
-                          ? '0 0 10px #f59e0b'
-                          : '0 2px 6px rgba(0,0,0,0.6)',
-                        cursor: draggable
-                          ? 'grab'
-                          : 'pointer',
+                          ? '0 0 12px #f59e0b, inset 0 0 10px rgba(0,0,0,0.8)'
+                          : '0 3px 8px rgba(0,0,0,0.7), inset 0 0 8px rgba(0,0,0,0.7)',
+                        cursor: draggable ? 'grab' : 'pointer',
                         display: 'flex',
-                        flexDirection:
-                          'column',
-                        alignItems:
-                          'center',
-                        justifyContent:
-                          'flex-end',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '3px 0',
+                        boxSizing: 'border-box',
+                        overflow: 'hidden',
+                        userSelect: 'none',
                       }}
                     >
+                      {/* Initials Placeholder when token has no image */}
+                      {!hasImage && (
+                        <span
+                          style={{
+                            marginTop: 'auto',
+                            marginBottom: 'auto',
+                            fontSize: `${Math.max(12, size * 0.35)}px`,
+                            fontWeight: '900',
+                            color: '#f8fafc',
+                            textShadow: '0 2px 4px rgba(0,0,0,0.9), 0 0 2px #000',
+                            letterSpacing: '0.5px',
+                            pointerEvents: 'none',
+                          }}
+                        >
+                          {getTokenInitials(tokenName)}
+                        </span>
+                      )}
+
+                      {/* Readable name banner when token has no image */}
+                      {!hasImage && (
+                        <div
+                          style={{
+                            width: '92%',
+                            textAlign: 'center',
+                            fontSize: `${Math.max(9, Math.min(12, size * 0.18))}px`,
+                            fontWeight: '600',
+                            color: '#ffffff',
+                            textShadow: '0 1px 2px #000, 0 0 4px #000',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            background: 'rgba(0, 0, 0, 0.65)',
+                            borderRadius: '3px',
+                            padding: '1px 3px',
+                            marginBottom: '2px',
+                            pointerEvents: 'none',
+                          }}
+                        >
+                          {tokenName}
+                        </div>
+                      )}
+
                       {/* Health Bar */}
                       <div
                         style={{
                           width: '80%',
                           height: '4px',
-                          background: '#444',
+                          background: 'rgba(0,0,0,0.8)',
                           borderRadius: '2px',
-                          marginBottom: '4px',
+                          marginBottom: '2px',
                           overflow: 'hidden',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.8)',
+                          marginTop: hasImage ? 'auto' : '0',
                         }}
                       >
                         <div
                           style={{
                             width: `${Math.max(
                               0,
-                              Math.min(
-                                100,
-                                (token.currentHp /
-                                  token.maxHp) *
-                                  100,
-                              ),
+                              Math.min(100, (token.currentHp / token.maxHp) * 100),
                             )}%`,
                             height: '100%',
                             background:
-                              token.currentHp /
-                                token.maxHp >
-                              0.3
+                              token.currentHp / token.maxHp > 0.3
                                 ? '#2dc653'
                                 : '#d90429',
+                            transition: 'width 0.2s ease',
                           }}
                         />
                       </div>
                     </div>
-                  )
+                  );
                 })}
               </div>
             </TransformComponent>
@@ -878,34 +666,22 @@ export default function ActiveMap({
         <TokenBox
           sessionId={sessionId}
           selectedToken={selectedToken}
-          onCloseInspector={() =>
-            setSelectedToken(null)
-          }
-          onHpChanged={(id: any, newHp: any) => {
+          onCloseInspector={() => setSelectedToken(null)}
+          onHpChanged={(id: string, newHp: number) => {
             setTokens((prev) =>
               prev.map((token) =>
-                token.id === id
-                  ? {
-                      ...token,
-                      currentHp: newHp,
-                    }
-                  : token,
+                token.id === id ? { ...token, currentHp: newHp } : token,
               ),
-            )
+            );
           }}
-          onTokenDeleted={(id: any) => {
-            setTokens((prev) =>
-              prev.filter(
-                (token) => token.id !== id,
-              ),
-            )
-
-            setSelectedToken(null)
+          onTokenDeleted={(id: string) => {
+            setTokens((prev) => prev.filter((token) => token.id !== id));
+            setSelectedToken(null);
           }}
         />
       )}
     </div>
-  )
+  );
 }
 
 const buttonStyle: CSSProperties = {
@@ -921,4 +697,4 @@ const buttonStyle: CSSProperties = {
   cursor: 'pointer',
   fontSize: '16px',
   fontWeight: 'bold',
-}
+};
