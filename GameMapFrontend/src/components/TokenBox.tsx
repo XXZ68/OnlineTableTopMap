@@ -8,7 +8,7 @@ import {
 
 const BACKEND_URL = 'http://localhost:5089'
 
-type Token = {
+export type Token = {
   id: string
   name: string
   gridX: number
@@ -18,16 +18,17 @@ type Token = {
   maxHp: number
 }
 
-type Monster = {
+export type Monster = {
   index: string
   name: string
   challengeRating: string | number
   size: string
   armorClass: number
   hitPoints: number
+  tokenImageUrl?: string | null
 }
 
-type Character = {
+export type Character = {
   id: string
   name: string
   level: number
@@ -44,7 +45,7 @@ type TokenInspectorProps = {
   onTokenDeleted?: (id: string) => void
 }
 
-type TokenBoxProps = {
+export type TokenBoxProps = {
   sessionId: string | null
   selectedToken: Token | null
   onCloseInspector: () => void
@@ -52,8 +53,10 @@ type TokenBoxProps = {
   onTokenDeleted: (id: string) => void
 }
 
-// Subcomponent: Using key={selectedToken.id} resets state on token switch
-// with NO useEffect needed.
+// ---------------------------------------------------------------------------
+// 1. SUBCOMPONENT: Token Inspector
+// Using key={selectedToken.id} resets local state with NO useEffect needed
+// ---------------------------------------------------------------------------
 function TokenInspector({
   token,
   sessionId,
@@ -64,26 +67,17 @@ function TokenInspector({
   const [hp, setHp] = useState(String(token.currentHp))
   const [isSaving, setIsSaving] = useState(false)
 
-  const handleSaveHp = async (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
+  const handleSaveHp = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIsSaving(true)
 
     try {
-      const url = new URL(
-        `${BACKEND_URL}/api/Token/${token.id}/hp`,
-      )
-
+      const url = new URL(`${BACKEND_URL}/api/Token/${token.id}/hp`)
       if (sessionId) {
-        url.searchParams.append(
-          'sessionId',
-          sessionId,
-        )
+        url.searchParams.append('sessionId', sessionId)
       }
 
       const newHp = Number(hp)
-
       const res = await fetch(url.toString(), {
         method: 'PATCH',
         headers: {
@@ -98,10 +92,7 @@ function TokenInspector({
         onHpChanged?.(token.id, newHp)
       }
     } catch (err: unknown) {
-      console.error(
-        'Failed to update HP:',
-        err,
-      )
+      console.error('Failed to update HP:', err)
     } finally {
       setIsSaving(false)
     }
@@ -109,15 +100,9 @@ function TokenInspector({
 
   const handleDelete = async () => {
     try {
-      const url = new URL(
-        `${BACKEND_URL}/api/Token/${token.id}`,
-      )
-
+      const url = new URL(`${BACKEND_URL}/api/Token/${token.id}`)
       if (sessionId) {
-        url.searchParams.append(
-          'sessionId',
-          sessionId,
-        )
+        url.searchParams.append('sessionId', sessionId)
       }
 
       const res = await fetch(url.toString(), {
@@ -129,10 +114,7 @@ function TokenInspector({
         onClose()
       }
     } catch (err: unknown) {
-      console.error(
-        'Failed to remove token:',
-        err,
-      )
+      console.error('Failed to remove token:', err)
     }
   }
 
@@ -166,7 +148,7 @@ function TokenInspector({
           style={{
             background: 'none',
             border: 'none',
-            color: '#666',
+            color: '#888',
             cursor: 'pointer',
           }}
         >
@@ -182,7 +164,7 @@ function TokenInspector({
         }}
       >
         Pos: ({token.gridX}, {token.gridY}) | Size:{' '}
-        {token.sizeInCells}x{token.sizeInCells}
+        {token.sizeInCells || 1}x{token.sizeInCells || 1}
       </div>
 
       <form
@@ -205,9 +187,7 @@ function TokenInspector({
         <input
           type="number"
           value={hp}
-          onChange={(event) =>
-            setHp(event.target.value)
-          }
+          onChange={(event) => setHp(event.target.value)}
           style={{
             width: '60px',
             padding: '4px 6px',
@@ -266,6 +246,122 @@ function TokenInspector({
   )
 }
 
+// ---------------------------------------------------------------------------
+// 2. SUBCOMPONENT: Custom Monster Form
+// ---------------------------------------------------------------------------
+function CustomMonsterForm({
+  onAddMonster,
+}: {
+  onAddMonster: (monster: Monster) => void
+}) {
+  const [name, setName] = useState('')
+  const [hp, setHp] = useState('10')
+  const [ac, setAc] = useState('10')
+  const [size, setSize] = useState('Medium')
+  const [imageUrl, setImageUrl] = useState('')
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!name.trim()) return
+
+    onAddMonster({
+      index: `custom-${Date.now()}`,
+      name: name.trim(),
+      hitPoints: Number(hp) || 10,
+      armorClass: Number(ac) || 10,
+      size,
+      challengeRating: 'Custom',
+      tokenImageUrl: imageUrl.trim() || null,
+    })
+
+    setName('')
+    setImageUrl('')
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px',
+        padding: '10px',
+        background: '#222',
+        border: '1px solid #3a3a3a',
+        borderRadius: '4px',
+        marginBottom: '12px',
+      }}
+    >
+      <input
+        type="text"
+        placeholder="Name (e.g. Bandit Captain)"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        required
+        style={formInputStyle}
+      />
+
+      <div style={{ display: 'flex', gap: '6px' }}>
+        <input
+          type="number"
+          placeholder="HP"
+          value={hp}
+          onChange={(e) => setHp(e.target.value)}
+          style={{ ...formInputStyle, width: '50%' }}
+        />
+        <input
+          type="number"
+          placeholder="AC"
+          value={ac}
+          onChange={(e) => setAc(e.target.value)}
+          style={{ ...formInputStyle, width: '50%' }}
+        />
+      </div>
+
+      <select
+        value={size}
+        onChange={(e) => setSize(e.target.value)}
+        style={{ ...formInputStyle, cursor: 'pointer' }}
+      >
+        <option value="Tiny">Tiny (1/2 cell)</option>
+        <option value="Small">Small (1 cell)</option>
+        <option value="Medium">Medium (1 cell)</option>
+        <option value="Large">Large (2x2 cells)</option>
+        <option value="Huge">Huge (3x3 cells)</option>
+        <option value="Gargantuan">Gargantuan (4x4 cells)</option>
+      </select>
+
+      <input
+        type="url"
+        placeholder="Token Image URL (optional)"
+        value={imageUrl}
+        onChange={(e) => setImageUrl(e.target.value)}
+        style={formInputStyle}
+      />
+
+      <button
+        type="submit"
+        style={{
+          marginTop: '4px',
+          padding: '6px',
+          background: '#b45309',
+          color: '#ffffff',
+          border: 'none',
+          borderRadius: '4px',
+          fontSize: '12px',
+          fontWeight: 'bold',
+          cursor: 'pointer',
+        }}
+      >
+        Save Custom Token
+      </button>
+    </form>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 3. MAIN COMPONENT: TokenBox Drawer
+// ---------------------------------------------------------------------------
 export default function TokenBox({
   sessionId,
   selectedToken,
@@ -274,61 +370,31 @@ export default function TokenBox({
   onTokenDeleted,
 }: TokenBoxProps) {
   const [isOpen, setIsOpen] = useState(false)
-
-  const [activeTab, setActiveTab] =
-    useState<'monsters' | 'characters'>(
-      'monsters',
-    )
-
-  const [searchQuery, setSearchQuery] =
-    useState('')
-
-  const [monsters, setMonsters] =
-    useState<Monster[]>([])
-
-  const [characters, setCharacters] =
-    useState<Character[]>([])
-
-  const [loading, setLoading] =
-    useState(false)
+  const [activeTab, setActiveTab] = useState<'monsters' | 'custom' | 'characters'>('monsters')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [monsters, setMonsters] = useState<Monster[]>([])
+  const [customMonsters, setCustomMonsters] = useState<Monster[]>([])
+  const [characters, setCharacters] = useState<Character[]>([])
+  const [loading, setLoading] = useState(false)
 
   // 1. SRD Monsters search
   useEffect(() => {
-    if (activeTab !== 'monsters') {
-      return
-    }
+    if (activeTab !== 'monsters') return
 
     const controller = new AbortController()
-
     const timeout = setTimeout(async () => {
       setLoading(true)
-
       try {
         const res = await fetch(
           `${BACKEND_URL}/api/Compendium/monsters?query=${encodeURIComponent(searchQuery)}`,
-          {
-            signal: controller.signal,
-          },
+          { signal: controller.signal }
         )
 
-        if (!res.ok) {
-          throw new Error(
-            'Failed to fetch monsters',
-          )
-        }
-
-        const data: Monster[] =
-          await res.json()
-
+        if (!res.ok) throw new Error('Failed to fetch monsters')
+        const data: Monster[] = await res.json()
         setMonsters(data)
       } catch (err: unknown) {
-        if (
-          err instanceof DOMException &&
-          err.name === 'AbortError'
-        ) {
-          return
-        }
-
+        if (err instanceof DOMException && err.name === 'AbortError') return
         console.error(err)
       } finally {
         setLoading(false)
@@ -341,94 +407,66 @@ export default function TokenBox({
     }
   }, [searchQuery, activeTab])
 
-  // 2. Fetch Characters
+  // 2. Fetch Characters (queued asynchronously to avoid cascading renders)
   useEffect(() => {
-    if (
-      activeTab !== 'characters' ||
-      !sessionId
-    ) {
-      return
-    }
+    if (activeTab !== 'characters' || !sessionId) return
 
     const controller = new AbortController()
 
     async function loadCharacters() {
       setLoading(true)
-
       try {
         const res = await fetch(
           `${BACKEND_URL}/api/Character/session/${sessionId}`,
-          {
-            signal: controller.signal,
-          },
+          { signal: controller.signal }
         )
-
-        if (!res.ok) {
-          throw new Error(
-            'Failed to fetch session characters',
-          )
-        }
-
-        const data: Character[] =
-          await res.json()
-
+        if (!res.ok) throw new Error('Failed to fetch session characters')
+        const data: Character[] = await res.json()
         setCharacters(data)
       } catch (err: unknown) {
-        if (
-          err instanceof DOMException &&
-          err.name === 'AbortError'
-        ) {
-          return
-        }
-
+        if (err instanceof DOMException && err.name === 'AbortError') return
         console.error(err)
       } finally {
         setLoading(false)
       }
     }
 
-    const id = setTimeout(
-      loadCharacters,
-      0,
-    )
-
+    const id = setTimeout(loadCharacters, 0)
     return () => {
       clearTimeout(id)
       controller.abort()
     }
   }, [sessionId, activeTab])
 
+  // 3. Drag handlers
   const handleDragMonsterStart = (
     event: DragEvent<HTMLDivElement>,
-    monster: Monster,
+    monster: Monster
   ) => {
     event.dataTransfer.setData(
       'application/vtt-spawn-monster',
       JSON.stringify({
         monsterIndex: monster.index,
         name: monster.name,
-      }),
+      })
     )
-
     event.dataTransfer.effectAllowed = 'copy'
   }
 
   const handleDragCharacterStart = (
     event: DragEvent<HTMLDivElement>,
-    character: Character,
+    character: Character
   ) => {
     event.dataTransfer.setData(
       'application/vtt-place-character',
       JSON.stringify({
         characterId: character.id,
-      }),
+      })
     )
-
     event.dataTransfer.effectAllowed = 'copy'
   }
 
-  const isDrawerOpen =
-    isOpen || Boolean(selectedToken)
+  const isDrawerOpen = isOpen || Boolean(selectedToken)
 
   return (
     <div
@@ -439,18 +477,13 @@ export default function TokenBox({
         width: '320px',
         height: '100%',
         background: '#1a1a1a',
-        borderLeft:
-          '1px solid rgba(255,255,255,0.15)',
-        boxShadow:
-          '-4px 0 15px rgba(0,0,0,0.6)',
+        borderLeft: '1px solid rgba(255,255,255,0.15)',
+        boxShadow: '-4px 0 15px rgba(0,0,0,0.6)',
         zIndex: 200,
         display: 'flex',
         flexDirection: 'column',
-        transform: isDrawerOpen
-          ? 'translateX(0)'
-          : 'translateX(100%)',
-        transition:
-          'transform 0.25s ease',
+        transform: isDrawerOpen ? 'translateX(0)' : 'translateX(100%)',
+        transition: 'transform 0.25s ease',
       }}
     >
       {/* Toggle Button */}
@@ -465,8 +498,7 @@ export default function TokenBox({
           height: '42px',
           background: '#1a1a1a',
           color: '#e0a96d',
-          border:
-            '1px solid rgba(255,255,255,0.15)',
+          border: '1px solid rgba(255,255,255,0.15)',
           borderRight: 'none',
           borderRadius: '6px 0 0 6px',
           cursor: 'pointer',
@@ -478,192 +510,128 @@ export default function TokenBox({
         {isDrawerOpen ? '▶' : '🧰'}
       </button>
 
-      {/* Header */}
-      <div
-        style={{
-          padding: '14px',
-          borderBottom: '1px solid #333',
-        }}
-      >
-        <h3
-          style={{
-            margin: '0 0 10px 0',
-            color: '#f5f5f5',
-            fontSize: '15px',
-          }}
-        >
+      {/* Header & Mode Tabs */}
+      <div style={{ padding: '14px', borderBottom: '1px solid #333' }}>
+        <h3 style={{ margin: '0 0 10px 0', color: '#f5f5f5', fontSize: '15px' }}>
           GM TokenBox
         </h3>
 
-        <div
-          style={{
-            display: 'flex',
-            gap: '6px',
-          }}
-        >
+        <div style={{ display: 'flex', gap: '4px' }}>
           <button
             type="button"
-            onClick={() =>
-              setActiveTab('monsters')
-            }
-            style={
-              activeTab === 'monsters'
-                ? activeTabStyle
-                : inactiveTabStyle
-            }
+            onClick={() => setActiveTab('monsters')}
+            style={activeTab === 'monsters' ? activeTabStyle : inactiveTabStyle}
           >
-            SRD Monsters
+            SRD
           </button>
 
           <button
             type="button"
-            onClick={() =>
-              setActiveTab('characters')
-            }
-            style={
-              activeTab === 'characters'
-                ? activeTabStyle
-                : inactiveTabStyle
-            }
+            onClick={() => setActiveTab('custom')}
+            style={activeTab === 'custom' ? activeTabStyle : inactiveTabStyle}
           >
-            Characters
+            Custom
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('characters')}
+            style={activeTab === 'characters' ? activeTabStyle : inactiveTabStyle}
+          >
+            Party
           </button>
         </div>
       </div>
 
-      {/* Content */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '12px',
-        }}
-      >
+      {/* Content Area */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
+        {/* TAB 1: SRD Monsters */}
         {activeTab === 'monsters' && (
           <>
             <input
               type="text"
               placeholder="Search monsters (e.g. Goblin, Dragon)..."
               value={searchQuery}
-              onChange={(event) =>
-                setSearchQuery(
-                  event.target.value,
-                )
-              }
+              onChange={(event) => setSearchQuery(event.target.value)}
               style={inputStyle}
             />
 
-            {loading && (
-              <div style={subtextStyle}>
-                Searching SRD...
-              </div>
-            )}
+            {loading && <div style={subtextStyle}>Searching SRD...</div>}
 
-            {!loading &&
-              monsters.length === 0 && (
-                <div style={subtextStyle}>
-                  No monsters found.
-                </div>
-              )}
+            {!loading && monsters.length === 0 && (
+              <div style={subtextStyle}>No monsters found.</div>
+            )}
 
             {monsters.map((monster) => (
               <div
                 key={monster.index}
                 draggable
-                onDragStart={(event) =>
-                  handleDragMonsterStart(
-                    event,
-                    monster,
-                  )
-                }
+                onDragStart={(event) => handleDragMonsterStart(event, monster)}
                 style={itemCardStyle}
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent:
-                      'space-between',
-                  }}
-                >
-                  <strong
-                    style={{ color: '#fff' }}
-                  >
-                    {monster.name}
-                  </strong>
-
-                  <span
-                    style={badgeStyle}
-                  >
-                    CR {monster.challengeRating}
-                  </span>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <strong style={{ color: '#fff' }}>{monster.name}</strong>
+                  <span style={badgeStyle}>CR {monster.challengeRating}</span>
                 </div>
-
-                <div
-                  style={{
-                    fontSize: '11px',
-                    color: '#888',
-                    marginTop: '4px',
-                  }}
-                >
-                  Size: {monster.size} | AC:{' '}
-                  {monster.armorClass} | HP:{' '}
-                  {monster.hitPoints}
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
+                  Size: {monster.size} | AC: {monster.armorClass} | HP: {monster.hitPoints}
                 </div>
               </div>
             ))}
           </>
         )}
 
+        {/* TAB 2: Custom Monsters */}
+        {activeTab === 'custom' && (
+          <div>
+            <CustomMonsterForm
+              onAddMonster={(m) => setCustomMonsters((prev) => [m, ...prev])}
+            />
+
+            {customMonsters.length === 0 ? (
+              <div style={subtextStyle}>No custom monsters created yet.</div>
+            ) : (
+              customMonsters.map((monster) => (
+                <div
+                  key={monster.index}
+                  draggable
+                  onDragStart={(event) => handleDragMonsterStart(event, monster)}
+                  style={{ ...itemCardStyle, borderColor: '#78350f' }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <strong style={{ color: '#fcd34d' }}>{monster.name}</strong>
+                    <span style={{ ...badgeStyle, background: '#78350f', color: '#fef08a' }}>
+                      Custom
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px' }}>
+                    Size: {monster.size} | AC: {monster.armorClass} | HP: {monster.hitPoints}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: Session Characters */}
         {activeTab === 'characters' && (
           <>
             {characters.length === 0 ? (
-              <div style={subtextStyle}>
-                No characters registered in
-                session.
-              </div>
+              <div style={subtextStyle}>No characters registered in session.</div>
             ) : (
               characters.map((character) => (
                 <div
                   key={character.id}
                   draggable
-                  onDragStart={(event) =>
-                    handleDragCharacterStart(
-                      event,
-                      character,
-                    )
-                  }
+                  onDragStart={(event) => handleDragCharacterStart(event, character)}
                   style={itemCardStyle}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent:
-                        'space-between',
-                    }}
-                  >
-                    <strong
-                      style={{ color: '#fff' }}
-                    >
-                      {character.name}
-                    </strong>
-
-                    <span
-                      style={badgeStyle}
-                    >
-                      Lvl {character.level}
-                    </span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <strong style={{ color: '#fff' }}>{character.name}</strong>
+                    <span style={badgeStyle}>Lvl {character.level}</span>
                   </div>
-
-                  <div
-                    style={{
-                      fontSize: '11px',
-                      color: '#888',
-                      marginTop: '4px',
-                    }}
-                  >
-                    HP: {character.currentHp}/
-                    {character.maxHp} | AC:{' '}
-                    {character.armorClass}
+                  <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
+                    HP: {character.currentHp}/{character.maxHp} | AC: {character.armorClass}
                   </div>
                 </div>
               ))
@@ -672,7 +640,7 @@ export default function TokenBox({
         )}
       </div>
 
-      {/* Inspector */}
+      {/* Inspector Drawer Footer */}
       {selectedToken && (
         <TokenInspector
           key={selectedToken.id}
@@ -687,26 +655,29 @@ export default function TokenBox({
   )
 }
 
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 const activeTabStyle: CSSProperties = {
   flex: 1,
-  padding: '6px',
+  padding: '6px 4px',
   background: '#e0a96d',
   color: '#1a1a1a',
   border: 'none',
   borderRadius: '4px',
   fontWeight: 'bold',
-  fontSize: '12px',
+  fontSize: '11px',
   cursor: 'pointer',
 }
 
 const inactiveTabStyle: CSSProperties = {
   flex: 1,
-  padding: '6px',
+  padding: '6px 4px',
   background: '#2b2b2b',
   color: '#aaa',
   border: '1px solid #444',
   borderRadius: '4px',
-  fontSize: '12px',
+  fontSize: '11px',
   cursor: 'pointer',
 }
 
@@ -719,6 +690,17 @@ const inputStyle: CSSProperties = {
   color: '#fff',
   fontSize: '12px',
   marginBottom: '10px',
+  boxSizing: 'border-box',
+}
+
+const formInputStyle: CSSProperties = {
+  width: '100%',
+  padding: '6px 8px',
+  background: '#111',
+  border: '1px solid #444',
+  borderRadius: '4px',
+  color: '#fff',
+  fontSize: '11px',
   boxSizing: 'border-box',
 }
 
