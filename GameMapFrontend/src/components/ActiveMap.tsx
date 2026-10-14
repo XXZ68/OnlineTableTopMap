@@ -538,7 +538,7 @@ export default function ActiveMap({
                   const top = (grid?.offsetY || 0) + token.gridY * cellSize;
                   const draggable = canMoveToken(token);
                   const isSelected = selectedToken?.id === token.id;
-                  const hasImage = Boolean(token.tokenImageUrl);
+                  const hasImage = false;
                   const tokenName = token.name || 'Token';
 
                   return (
