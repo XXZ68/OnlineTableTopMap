@@ -185,7 +185,7 @@ export default function CreateGame({
 
           <TextInput
             type="text"
-            className="mt-1 block w-full rounded-md shadow-sm p-2 bg-gray-50 cursor-not-allowed font-mono tracking-wider"
+            className="mt-1 block w-full rounded-md shadow-sm p-2 cursor-not-allowed font-mono tracking-wider"
             placeholder={
               isLoading
                 ? 'Generating 6-character code...'
@@ -211,7 +211,7 @@ export default function CreateGame({
           <div className="flex gap-2 mt-1">
             <TextInput
               type="text"
-              className="block w-full rounded-md shadow-sm p-2 bg-gray-50 cursor-not-allowed"
+              className="block w-full rounded-md shadow-sm p-2 cursor-not-allowed"
               placeholder="No map selected (optional)"
               disabled
               value={selectedMapTitle}

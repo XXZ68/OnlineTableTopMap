@@ -179,7 +179,7 @@ export default function CreateCampaign({
       >
         {/* Campaign Name Input */}
         <div>
-          <p className="block text-sm font-medium text-gray-700">
+          <p className="block text-sm font-medium">
             Campaign Name
           </p>
 
@@ -233,7 +233,7 @@ export default function CreateCampaign({
           )}
 
           {showMapSearchPool && (
-            <div className="bg-gray-50 border p-3 rounded-md mt-3 space-y-2 max-h-48 overflow-y-auto">
+            <div className="border p-3 rounded-md mt-3 space-y-2 max-h-48 overflow-y-auto">
               <div className="flex justify-between items-center mb-2">
                 <span className="font-semibold text-sm">
                   Select Database Map

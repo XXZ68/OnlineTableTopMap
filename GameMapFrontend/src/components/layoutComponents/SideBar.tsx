@@ -32,19 +32,19 @@ export default function Sidebar({
           </li>
 
           <li>
-            <a href="/api/game">Return to Game</a>
+            <a href="/game">Return to Game</a>
           </li>
 
           <li>
-            <a href="/api/Map">My Maps</a>
+            <a href="/Map">My Maps</a>
           </li>
 
           <li>
-            <a href="/api/Character">My Characters</a>
+            <a href="/Character">My Characters</a>
           </li>
 
           <li>
-            <a href="/api/profile">Profile</a>
+            <a href="/profile">Profile</a>
           </li>
         </ul>
       </div>

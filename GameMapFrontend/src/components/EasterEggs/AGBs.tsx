@@ -22,7 +22,7 @@ export function AGBs({ isOpen, onClose }: AGBsProps) {
 
     console.log('Sucker accepted, let him into his account')
     onClose()
-    navigate('/api/game')
+    navigate('/profile')
   }
 
   return (

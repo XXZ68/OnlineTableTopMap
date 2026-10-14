@@ -8,14 +8,14 @@ export default function NavBar() {
         href="/"
         className="text-xl font-bold tracking-wide hover:text-gray-300 transition-colors"
       >
-        Hier könnte ihre Werbung stehen
+        OTTM
       </a>
 
       {/* Navigation Links */}
       <ul className="flex items-center gap-6 m-0 p-0 list-none">
         <li>
           <a
-            href="/api/Map"
+            href="/Map"
             className="text-gray-300 hover:text-white transition-colors text-sm"
           >
             Map Managment
@@ -24,10 +24,19 @@ export default function NavBar() {
 
         <li>
           <a
-            href="/api/Character"
+            href="/Character"
             className="text-gray-300 hover:text-white transition-colors text-sm"
           >
             Character Managment
+          </a>
+        </li>        
+        
+        <li>
+          <a
+            href="/profile"
+            className="text-gray-300 hover:text-white transition-colors text-sm"
+          >
+            Profile Managment
           </a>
         </li>
 

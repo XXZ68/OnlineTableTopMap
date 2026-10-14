@@ -22,7 +22,7 @@ export default function JoinGame({
     console.log(`Launching lobby "${lobbyName}"`)
 
     onClose()
-    navigate('/api/game')
+    navigate('/game')
   }
 
   return (

@@ -4,7 +4,7 @@ import { SimpleSectionCard } from '../components/atoms/SimpleSectionCard'
 import NotesForm from '../components/gameComponents/NotesForm'
 import Inventory from '../components/gameComponents/Inventory'
 import Actions from '../components/gameComponents/Actions'
-import LayoutDM from '../layouts/LayoutDM'
+import NavBar from '../components/layoutComponents/NavBar'
 
 type PanelName = 'notes' | 'inventory' | 'spells'
 
@@ -16,7 +16,8 @@ function Main() {
   }
 
   return (
-    <LayoutDM>
+    <>
+     <NavBar />
       {/* Content wrapper: Simplified classes to prevent escaping containment */}
       <div className="flex flex-col lg:flex-row gap-6 max-w-7xl w-full mx-auto p-6">
 
@@ -68,7 +69,7 @@ function Main() {
         activePanel={activePanel}
         onTogglePanel={togglePanel}
       />
-    </LayoutDM>
+    </>
   )
 }
 
