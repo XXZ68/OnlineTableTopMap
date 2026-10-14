@@ -11,64 +11,13 @@ import {
   TransformComponent,
 } from 'react-zoom-pan-pinch';
 import TokenBox from './TokenBox';
-
-const BACKEND_URL = 'http://localhost:5089';
-
-type MapData = {
-  id: string;
-  widthInPixels: number;
-  heightInPixels: number;
-  imageUrl: string;
-  grid: GridData | null;
-  tokens: Token[];
-  activeSpells: SpellEvent[];
-};
-
-type GridData = {
-  cellSizeInPixels: number;
-  offsetX?: number;
-  offsetY?: number;
-  lineColor?: string;
-  lineOpacity?: number;
-};
-
-type Token = {
-  id: string;
-  name: string;
-  gridX: number;
-  gridY: number;
-  sizeInCells?: number;
-  isLocked?: boolean;
-  isVisibleToPlayers?: boolean;
-  characterId?: string | null;
-  currentHp: number;
-  maxHp: number;
-  tokenImageUrl?: string | null;
-};
-
-type SpellEvent = {
-  id?: string;
-  eventId?: string;
-  activeSpellId?: string;
-  originGridX?: number;
-  originGridY?: number;
-  targetGridX?: number;
-  targetGridY?: number;
-  radiusInCells?: number;
-  colorHex?: string;
-};
-
-type CurrentUser = {
-  playerId: string;
-  playerName: string;
-  isDungeonMaster: boolean;
-  selectedCharacterId: string | null;
-};
+import { getApiMapId, postApiTokenMapMapIdPlaceCharacter, postApiTokenMapMapIdSpawnMonster } from '../api';
+import { ActiveSpellDto, GridDto, MapDetailDto, MapTokenDto, ParticipantDto, SpellCastEventDto } from '../model';
 
 type ActiveMapProps = {
-  sessionId: string | null;
+  sessionId: string;
   mapId: string;
-  currentUser: CurrentUser;
+  currentParticipant: ParticipantDto;
 };
 
 // Generates a stable hue from the token name so similar tokens share a distinct theme
@@ -93,15 +42,15 @@ function getTokenInitials(name = 'T'): string {
 export default function ActiveMap({
   sessionId,
   mapId,
-  currentUser,
+  currentParticipant,
 }: ActiveMapProps) {
   // --- 1. STATE ---
-  const [mapData, setMapData] = useState<MapData | null>(null);
-  const [tokens, setTokens] = useState<Token[]>([]);
-  const [grid, setGrid] = useState<GridData | null>(null);
-  const [activeSpells, setActiveSpells] = useState<SpellEvent[]>([]);
+  const [mapData, setMapData] = useState<MapDetailDto>();
+  const [tokens, setTokens] = useState<MapTokenDto[]>([]);
+  const [grid, setGrid] = useState<GridDto>();
+  const [activeSpells, setActiveSpells] = useState<ActiveSpellDto[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [selectedToken, setSelectedToken] = useState<Token | null>(null);
+  const [selectedToken, setSelectedToken] = useState<MapTokenDto>();
 
   // References
   const hubConnectionRef = useRef<signalR.HubConnection | null>(null);
@@ -114,42 +63,43 @@ export default function ActiveMap({
   useEffect(() => {
     let isMounted = true;
 
-    fetch(`${BACKEND_URL}/api/Map/${mapId}`)
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(`Failed to load map: ${res.statusText}`);
-        }
-        return res.json();
-      })
-      .then((data: MapData) => {
+    const loadMap = async () => {
+      try {
+        const response = await getApiMapId(mapId);
+        const data = response.data as MapDetailDto;
+        console.log(data)
         if (!isMounted) return;
+
         setMapData(data);
         setGrid(data.grid);
         setTokens(data.tokens || []);
         setActiveSpells(data.activeSpells || []);
         setError(null);
-      })
-      .catch((err: unknown) => {
+      } catch (err: unknown) {
         if (!isMounted) return;
-        console.error(err);
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError('Failed to load map.');
-        }
-      });
+
+        console.error('Failed to load map:', err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to load map.',
+        );
+      }
+    };
+
+    void loadMap();
 
     return () => {
       isMounted = false;
     };
   }, [mapId]);
-
   // --- 3. SIGNALR REAL-TIME SYNC ---
   useEffect(() => {
     if (!sessionId) return;
 
     const connection = new signalR.HubConnectionBuilder()
-      .withUrl(`${BACKEND_URL}/hubs/map`, {
+      .withUrl(`/hubs/map`, {
         withCredentials: true,
       })
       .withAutomaticReconnect()
@@ -174,7 +124,7 @@ export default function ActiveMap({
       },
     );
 
-    connection.on('TokenSpawned', (newToken: Token) => {
+    connection.on('TokenSpawned', (newToken: MapTokenDto) => {
       setTokens((prev) => [...prev, newToken]);
     });
 
@@ -192,21 +142,21 @@ export default function ActiveMap({
 
     connection.on('TokenRemoved', (tokenId: string) => {
       setTokens((prev) => prev.filter((token) => token.id !== tokenId));
-      setSelectedToken((prev) => (prev && prev.id === tokenId ? null : prev));
+      setSelectedToken((prev) => (prev && prev.id === tokenId ? undefined : prev));
     });
 
-    connection.on('GridUpdated', (updatedGrid: GridData) => {
+    connection.on('GridUpdated', (updatedGrid: GridDto) => {
       setGrid(updatedGrid);
     });
 
-    connection.on('SpellCasted', (spellEvent: SpellEvent) => {
+    connection.on('SpellCasted', (spellEvent: SpellCastEventDto) => {
       setActiveSpells((prev) => [...prev, spellEvent]);
     });
 
     connection.on('SpellDismissed', (spellId: string) => {
       setActiveSpells((prev) =>
         prev.filter(
-          (spell) => spell.id !== spellId && spell.activeSpellId !== spellId,
+          (spell) => spell.id !== spellId,
         ),
       );
     });
@@ -217,8 +167,8 @@ export default function ActiveMap({
         await connection.invoke(
           'JoinSession',
           sessionId,
-          currentUser.playerId,
-          currentUser.playerName,
+          currentParticipant.playerId,
+          currentParticipant.playerName,
         );
       })
       .catch((err: unknown) => {
@@ -230,28 +180,30 @@ export default function ActiveMap({
     return () => {
       if (hubConnectionRef.current) {
         hubConnectionRef.current
-          .invoke('LeaveSession', sessionId, currentUser.playerId)
+          .invoke('LeaveSession', sessionId, currentParticipant.playerId)
           .catch(() => {})
           .finally(() => {
             hubConnectionRef.current?.stop();
           });
       }
     };
-  }, [sessionId, currentUser.playerId, currentUser.playerName]);
+  }, [sessionId, currentParticipant.playerId, currentParticipant.playerName]);
 
   // --- 4. TOKEN DRAG & DROP WITH GEOMETRIC PROJECTION ---
-  const canMoveToken = (token: Token) => {
-    if (currentUser?.isDungeonMaster) return true;
+  const canMoveToken = (token: MapTokenDto) => {
+    if (currentParticipant?.isDungeonMaster) return true;
     if (token.isLocked) return false;
-    return token.characterId === currentUser?.selectedCharacterId;
+    return token.characterId === currentParticipant?.selectedCharacterId;
   };
 
-  const handleDragStart = (event: DragEvent<HTMLDivElement>, token: Token) => {
+  const handleDragStart = (event: DragEvent<HTMLDivElement>, token: MapTokenDto) => {
     if (!canMoveToken(token)) {
       event.preventDefault();
       return;
     }
-    event.dataTransfer.setData('text/plain', token.id);
+    if (token.id) {
+      event.dataTransfer.setData('text/plain', token.id);
+    }
   };
 
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
@@ -261,15 +213,15 @@ export default function ActiveMap({
   const handleDrop = async (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
 
-    if (!grid || !mapContainerRef.current || !mapData) return;
+    if (!grid || !mapContainerRef.current || !mapData || !mapData.widthInPixels || !mapData.heightInPixels) return;
 
     // 1. Get real-time post-transform bounding rectangle
     const rect = mapContainerRef.current.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) return;
 
     // 2. Exact unscaled canvas coordinates
-    const canvasX = ((event.clientX - rect.left) / rect.width) * mapData.widthInPixels;
-    const canvasY = ((event.clientY - rect.top) / rect.height) * mapData.heightInPixels;
+      const canvasX = ((event.clientX - rect.left) / rect.width) * mapData.widthInPixels;
+      const canvasY = ((event.clientY - rect.top) / rect.height) * mapData.heightInPixels;
 
     const cellSize = grid.cellSizeInPixels || 50;
 
@@ -291,20 +243,17 @@ export default function ActiveMap({
       };
 
       try {
-        const url = new URL(`${BACKEND_URL}/api/Token/map/${mapId}/spawn-monster`);
-        if (sessionId) url.searchParams.append('sessionId', sessionId);
-
-        await fetch(url.toString(), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        await postApiTokenMapMapIdSpawnMonster(
+          mapId,
+          {
             monsterIndex: String(monster.monsterIndex),
-            gameSessionId: sessionId || null,
+            gameSessionId: sessionId || undefined,
             gridX: targetGridX,
             gridY: targetGridY,
             customName: monster.name,
-          }),
-        });
+          },
+          sessionId ? { sessionId } : undefined,
+        );
       } catch (err: unknown) {
         console.error('Failed to spawn monster:', err);
       }
@@ -317,19 +266,16 @@ export default function ActiveMap({
       const character = JSON.parse(characterPlaceData) as { characterId: string };
 
       try {
-        const url = new URL(`${BACKEND_URL}/api/Token/map/${mapId}/place-character`);
-        url.searchParams.append('sessionId', sessionId);
-
-        await fetch(url.toString(), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        await postApiTokenMapMapIdPlaceCharacter(
+          mapId,
+          {
             characterId: character.characterId,
             gameSessionId: sessionId,
             gridX: targetGridX,
             gridY: targetGridY,
-          }),
-        });
+          },
+          { sessionId },
+        );
       } catch (err: unknown) {
         console.error('Failed to place character:', err);
       }
@@ -457,7 +403,7 @@ export default function ActiveMap({
                   position: 'relative',
                   width: mapData.widthInPixels,
                   height: mapData.heightInPixels,
-                  backgroundImage: `url(${BACKEND_URL}${mapData.imageUrl})`,
+                  backgroundImage: `url(${mapData.imageUrl})`,
                   backgroundSize: 'cover',
                   userSelect: 'none',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.8)',
@@ -501,19 +447,19 @@ export default function ActiveMap({
                     {activeSpells.map((spell) => {
                       const originX =
                         (grid.offsetX || 0) +
-                        (spell.originGridX ?? spell.targetGridX ?? 0) * cellSize +
+                        (spell.originGridX ?? 0) * cellSize +
                         cellSize / 2;
 
                       const originY =
                         (grid.offsetY || 0) +
-                        (spell.originGridY ?? spell.targetGridY ?? 0) * cellSize +
+                        (spell.originGridY ?? 0) * cellSize +
                         cellSize / 2;
 
                       const radiusPx = (spell.radiusInCells || 1) * cellSize;
 
                       return (
                         <circle
-                          key={spell.id || spell.eventId}
+                          key={spell.id}
                           cx={originX}
                           cy={originY}
                           r={radiusPx}
@@ -529,13 +475,13 @@ export default function ActiveMap({
 
                 {/* TOKENS LAYER */}
                 {tokens.map((token) => {
-                  if (!token.isVisibleToPlayers && !currentUser?.isDungeonMaster) {
+                  if (!token.isVisibleToPlayers && !currentParticipant?.isDungeonMaster) {
                     return null;
                   }
 
                   const size = (token.sizeInCells || 1) * cellSize;
-                  const left = (grid?.offsetX || 0) + token.gridX * cellSize;
-                  const top = (grid?.offsetY || 0) + token.gridY * cellSize;
+                  const left = (grid?.offsetX || 0) + token.gridX! * cellSize;
+                  const top = (grid?.offsetY || 0) + token.gridY! * cellSize;
                   const draggable = canMoveToken(token);
                   const isSelected = selectedToken?.id === token.id;
                   const hasImage = false;
@@ -548,7 +494,7 @@ export default function ActiveMap({
                       draggable={draggable}
                       onDragStart={(event) => handleDragStart(event, token)}
                       onClick={() => {
-                        if (currentUser?.isDungeonMaster) {
+                        if (currentParticipant?.isDungeonMaster) {
                           setSelectedToken(token);
                         }
                       }}
@@ -641,11 +587,11 @@ export default function ActiveMap({
                           style={{
                             width: `${Math.max(
                               0,
-                              Math.min(100, (token.currentHp / token.maxHp) * 100),
+                              Math.min(100, (token.currentHp! / token.maxHp!) * 100),
                             )}%`,
                             height: '100%',
                             background:
-                              token.currentHp / token.maxHp > 0.3
+                              token.currentHp! / token.maxHp! > 0.3
                                 ? '#2dc653'
                                 : '#d90429',
                             transition: 'width 0.2s ease',
@@ -662,11 +608,11 @@ export default function ActiveMap({
       </TransformWrapper>
 
       {/* GM TOKENBOX DRAWER */}
-      {currentUser?.isDungeonMaster && (
+      {currentParticipant?.isDungeonMaster && (
         <TokenBox
           sessionId={sessionId}
           selectedToken={selectedToken}
-          onCloseInspector={() => setSelectedToken(null)}
+          onCloseInspector={() => setSelectedToken(undefined)}
           onHpChanged={(id: string, newHp: number) => {
             setTokens((prev) =>
               prev.map((token) =>
@@ -676,7 +622,7 @@ export default function ActiveMap({
           }}
           onTokenDeleted={(id: string) => {
             setTokens((prev) => prev.filter((token) => token.id !== id));
-            setSelectedToken(null);
+            setSelectedToken(undefined);
           }}
         />
       )}

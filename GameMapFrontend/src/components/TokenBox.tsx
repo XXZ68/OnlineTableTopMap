@@ -5,40 +5,11 @@ import {
   type DragEvent,
   type FormEvent,
 } from 'react'
-
-const BACKEND_URL = 'http://localhost:5089'
-
-export type Token = {
-  id: string
-  name: string
-  gridX: number
-  gridY: number
-  sizeInCells?: number
-  currentHp: number
-  maxHp: number
-}
-
-export type Monster = {
-  index: string
-  name: string
-  challengeRating: string | number
-  size: string
-  armorClass: number
-  hitPoints: number
-  tokenImageUrl?: string | null
-}
-
-export type Character = {
-  id: string
-  name: string
-  level: number
-  currentHp: number
-  maxHp: number
-  armorClass: number
-}
+import { deleteApiTokenId, getApiCharacterSessionSessionId, getApiCompendiumMonsters, patchApiTokenIdHp } from '../api'
+import { CharacterDto, CompendiumMonsterDto, MapTokenDto } from '../model'
 
 type TokenInspectorProps = {
-  token: Token
+  token: MapTokenDto
   sessionId: string | null
   onClose: () => void
   onHpChanged?: (id: string, newHp: number) => void
@@ -47,7 +18,7 @@ type TokenInspectorProps = {
 
 export type TokenBoxProps = {
   sessionId: string | null
-  selectedToken: Token | null
+  selectedToken: MapTokenDto | undefined
   onCloseInspector: () => void
   onHpChanged: (id: string, newHp: number) => void
   onTokenDeleted: (id: string) => void
@@ -67,52 +38,35 @@ function TokenInspector({
   const [hp, setHp] = useState(String(token.currentHp))
   const [isSaving, setIsSaving] = useState(false)
 
-  const handleSaveHp = async (event: FormEvent<HTMLFormElement>) => {
+    const handleSaveHp = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIsSaving(true)
 
     try {
-      const url = new URL(`${BACKEND_URL}/api/Token/${token.id}/hp`)
-      if (sessionId) {
-        url.searchParams.append('sessionId', sessionId)
-      }
-
       const newHp = Number(hp)
-      const res = await fetch(url.toString(), {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          newHp,
-        }),
-      })
 
-      if (res.ok) {
-        onHpChanged?.(token.id, newHp)
-      }
+      await patchApiTokenIdHp(
+        token.id!,
+        { newHp },
+        sessionId ? { sessionId } : undefined,
+      )
+
+      onHpChanged?.(token.id!, newHp)
     } catch (err: unknown) {
       console.error('Failed to update HP:', err)
     } finally {
       setIsSaving(false)
     }
   }
-
   const handleDelete = async () => {
     try {
-      const url = new URL(`${BACKEND_URL}/api/Token/${token.id}`)
-      if (sessionId) {
-        url.searchParams.append('sessionId', sessionId)
-      }
+      await deleteApiTokenId(
+        token.id!,
+        sessionId ? { sessionId } : undefined,
+      )
 
-      const res = await fetch(url.toString(), {
-        method: 'DELETE',
-      })
-
-      if (res.ok) {
-        onTokenDeleted?.(token.id)
-        onClose()
-      }
+      onTokenDeleted?.(token.id!)
+      onClose()
     } catch (err: unknown) {
       console.error('Failed to remove token:', err)
     }
@@ -252,7 +206,7 @@ function TokenInspector({
 function CustomMonsterForm({
   onAddMonster,
 }: {
-  onAddMonster: (monster: Monster) => void
+  onAddMonster: (monster: CompendiumMonsterDto) => void
 }) {
   const [name, setName] = useState('')
   const [hp, setHp] = useState('10')
@@ -270,8 +224,7 @@ function CustomMonsterForm({
       hitPoints: Number(hp) || 10,
       armorClass: Number(ac) || 10,
       size,
-      challengeRating: 'Custom',
-      tokenImageUrl: imageUrl.trim() || null,
+      challengeRating: undefined
     })
 
     setName('')
@@ -372,32 +325,33 @@ export default function TokenBox({
   const [isOpen, setIsOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'monsters' | 'custom' | 'characters'>('monsters')
   const [searchQuery, setSearchQuery] = useState('')
-  const [monsters, setMonsters] = useState<Monster[]>([])
-  const [customMonsters, setCustomMonsters] = useState<Monster[]>([])
-  const [characters, setCharacters] = useState<Character[]>([])
+  const [monsters, setMonsters] = useState<CompendiumMonsterDto[]>([])
+  const [customMonsters, setCustomMonsters] = useState<CompendiumMonsterDto[]>([])
+  const [characters, setCharacters] = useState<CharacterDto[]>([])
   const [loading, setLoading] = useState(false)
 
-  // 1. SRD Monsters search
   useEffect(() => {
     if (activeTab !== 'monsters') return
 
     const controller = new AbortController()
+
     const timeout = setTimeout(async () => {
       setLoading(true)
+
       try {
-        const res = await fetch(
-          `${BACKEND_URL}/api/Compendium/monsters?query=${encodeURIComponent(searchQuery)}`,
-          { signal: controller.signal }
+        const response = await getApiCompendiumMonsters(
+          { query: searchQuery },
+          { signal: controller.signal },
         )
 
-        if (!res.ok) throw new Error('Failed to fetch monsters')
-        const data: Monster[] = await res.json()
-        setMonsters(data)
+        setMonsters(response.data)
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        console.error(err)
+        console.error('Failed to fetch monsters:', err)
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
       }
     }, 250)
 
@@ -407,7 +361,7 @@ export default function TokenBox({
     }
   }, [searchQuery, activeTab])
 
-  // 2. Fetch Characters (queued asynchronously to avoid cascading renders)
+  // 2. Fetch Characters
   useEffect(() => {
     if (activeTab !== 'characters' || !sessionId) return
 
@@ -415,23 +369,28 @@ export default function TokenBox({
 
     async function loadCharacters() {
       setLoading(true)
+
       try {
-        const res = await fetch(
-          `${BACKEND_URL}/api/Character/session/${sessionId}`,
+
+        const res = await getApiCharacterSessionSessionId(
+          sessionId as string,
           { signal: controller.signal }
         )
-        if (!res.ok) throw new Error('Failed to fetch session characters')
-        const data: Character[] = await res.json()
-        setCharacters(data)
+
+        setCharacters(res.data as CharacterDto[])
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === 'AbortError') return
+
         console.error(err)
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
       }
     }
 
     const id = setTimeout(loadCharacters, 0)
+
     return () => {
       clearTimeout(id)
       controller.abort()
@@ -441,7 +400,7 @@ export default function TokenBox({
   // 3. Drag handlers
   const handleDragMonsterStart = (
     event: DragEvent<HTMLDivElement>,
-    monster: Monster
+    monster: CompendiumMonsterDto
   ) => {
     event.dataTransfer.setData(
       'application/vtt-spawn-monster',
@@ -455,7 +414,7 @@ export default function TokenBox({
 
   const handleDragCharacterStart = (
     event: DragEvent<HTMLDivElement>,
-    character: Character
+    character: CharacterDto
   ) => {
     event.dataTransfer.setData(
       'application/vtt-place-character',

@@ -1,27 +1,10 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import ActiveMap from '../components/ActiveMap'
-
-const BACKEND_URL = 'http://localhost:5089'
-
-type MapSummary = {
-  id: string
-  title?: string
-}
-
-type GameSession = {
-  id: string
-  joinCode?: string
-}
-
-type CurrentUser = {
-  playerId: string
-  playerName: string
-  isDungeonMaster: boolean
-  selectedCharacterId: string | null
-}
+import { getApiMap, postApiGameSession } from '../api'
+import { MapSummaryDto, ParticipantDto } from '../model'
 
 export default function BattleMapTestPage() {
-  const [maps, setMaps] = useState<MapSummary[]>([])
+  const [maps, setMaps] = useState<MapSummaryDto[]>([])
   const [selectedMapId, setSelectedMapId] = useState('')
   const [sessionId, setSessionId] = useState('')
   const [isDungeonMaster, setIsDungeonMaster] = useState(true)
@@ -37,47 +20,43 @@ export default function BattleMapTestPage() {
 
   // 1. Fetch available maps from backend on mount
   useEffect(() => {
-    let isMounted = true
+    const controller = new AbortController()
 
     async function loadMaps() {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/Map`)
+        const res = await getApiMap({
+          signal: controller.signal,
+        })
 
-        if (!res.ok) {
-          throw new Error(
-            `HTTP ${res.status}: ${res.statusText}`,
+        const data: MapSummaryDto[] = res.data
+
+        if (controller.signal.aborted) return
+
+        setMaps(data)
+
+        if (data.length > 0 && data[0].id) {
+          setSelectedMapId(data[0].id)
+
+          addLog(
+            `Loaded ${data.length} maps. Selected: "${
+              data[0].title || data[0].id
+            }"`,
+          )
+        } else {
+          addLog(
+            'No maps found. Upload a map via POST /api/Map first.',
           )
         }
-
-        const data: MapSummary[] = await res.json()
-
-        if (isMounted) {
-          setMaps(data)
-
-          if (data.length > 0) {
-            setSelectedMapId(data[0].id)
-
-            addLog(
-              `Loaded ${data.length} maps. Selected: "${
-                data[0].title || data[0].id
-              }"`,
-            )
-          } else {
-            addLog(
-              'No maps found. Upload a map via POST /api/Map first.',
-            )
-          }
-        }
       } catch (err: unknown) {
-        if (isMounted) {
-          if (err instanceof Error) {
-            addLog(`Failed to fetch maps: ${err.message}`)
-          } else {
-            addLog('Failed to fetch maps.')
-          }
+        if (controller.signal.aborted) return
+
+        if (err instanceof Error) {
+          addLog(`Failed to fetch maps: ${err.message}`)
+        } else {
+          addLog('Failed to fetch maps.')
         }
       } finally {
-        if (isMounted) {
+        if (!controller.signal.aborted) {
           setLoading(false)
         }
       }
@@ -86,40 +65,25 @@ export default function BattleMapTestPage() {
     loadMaps()
 
     return () => {
-      isMounted = false
+      controller.abort()
     }
   }, [])
-
   // 2. Quick session generator to test real-time multiplayer features
   const handleCreateTestSession = async () => {
     try {
-      const res = await fetch(
-        `${BACKEND_URL}/api/GameSession`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            sessionName: `Test Session ${Math.floor(
-              Math.random() * 1000,
-            )}`,
-            dungeonMasterId: 'dm-test-id-001',
-            dungeonMasterName: 'Dungeon Master',
-            initialMapId: selectedMapId || null,
-          }),
-        },
-      )
+      const res = await postApiGameSession({
+        sessionName: `Test Session ${Math.floor(
+          Math.random() * 1000,
+        )}`,
+        dungeonMasterId: 'dm-test-id-001',
+        dungeonMasterName: 'Dungeon Master',
+        initialMapId: selectedMapId || null,
+      })
 
-      if (!res.ok) {
-        throw new Error(
-          `Failed to create session: ${res.statusText}`,
-        )
+      const newSession = res.data
+      if (newSession && newSession.id) {
+        setSessionId(newSession.id)
       }
-
-      const newSession: GameSession = await res.json()
-
-      setSessionId(newSession.id)
 
       addLog(
         `Session created! Code: ${
@@ -136,7 +100,7 @@ export default function BattleMapTestPage() {
   }
 
   // Mock Current User object matching ActiveMap's expectations
-  const currentUser: CurrentUser = {
+  const currentParticipant: ParticipantDto = {
     playerId: isDungeonMaster
       ? 'dm-test-id-001'
       : 'player-test-id-002',
@@ -157,7 +121,7 @@ export default function BattleMapTestPage() {
             fontWeight: 'bold',
           }}
         >
-          Connecting to backend at {BACKEND_URL}...
+          Connecting to backend...
         </div>
       </div>
     )
@@ -208,7 +172,7 @@ export default function BattleMapTestPage() {
               {maps.map((map) => (
                 <option key={map.id} value={map.id}>
                   {map.title ||
-                    `Map (${map.id.substring(0, 8)}...)`}
+                    `Map (${map.id!.substring(0, 8)}...)`}
                 </option>
               ))}
             </select>
@@ -313,8 +277,8 @@ export default function BattleMapTestPage() {
         <ActiveMap
           key={`${selectedMapId}-${sessionId}`}
           mapId={selectedMapId}
-          sessionId={sessionId || null}
-          currentUser={currentUser}
+          sessionId={sessionId}
+          currentParticipant={currentParticipant}
         />
       ) : (
         <div style={emptyStateStyle}>
