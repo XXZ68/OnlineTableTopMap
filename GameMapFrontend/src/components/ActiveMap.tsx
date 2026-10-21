@@ -94,12 +94,15 @@ export default function ActiveMap({
       isMounted = false;
     };
   }, [mapId]);
+  
   // --- 3. SIGNALR REAL-TIME SYNC ---
   useEffect(() => {
     if (!sessionId) return;
 
+    let isDisposed = false;
+
     const connection = new signalR.HubConnectionBuilder()
-      .withUrl(`/hubs/map`, {
+      .withUrl('/hubs/map', {
         withCredentials: true,
       })
       .withAutomaticReconnect()
@@ -115,7 +118,6 @@ export default function ActiveMap({
               : token,
           ),
         );
-
         setSelectedToken((prev) =>
           prev && prev.id === tokenId
             ? { ...prev, gridX: newGridX, gridY: newGridY }
@@ -136,7 +138,6 @@ export default function ActiveMap({
           token.id === tokenId ? { ...token, currentHp: newHp } : token,
         ),
       );
-
       setSelectedToken((prev) =>
         prev && prev.id === tokenId ? { ...prev, currentHp: newHp } : prev,
       );
@@ -152,44 +153,73 @@ export default function ActiveMap({
     });
 
     connection.on('SpellCasted', (spellEvent: SpellCastEventDto) => {
-      setActiveSpells((prev) => [...prev, spellEvent]);
+      setActiveSpells((prev) => [
+        ...prev,
+        {
+          id: spellEvent.activeSpellId || spellEvent.eventId,
+          mapId: spellEvent.mapId,
+          spellIndex: spellEvent.spellIndex,
+          spellName: spellEvent.spellName,
+          originGridX: spellEvent.targetGridX,
+          originGridY: spellEvent.targetGridY,
+          radiusInCells: spellEvent.radiusInCells,
+          shape: spellEvent.areaShape,
+          colorHex: spellEvent.colorHex,
+        },
+      ]);
     });
 
     connection.on('SpellDismissed', (spellId: string) => {
       setActiveSpells((prev) =>
-        prev.filter(
-          (spell) => spell.id !== spellId,
-        ),
+        prev.filter((spell) => spell.id !== spellId),
       );
     });
 
-    connection
-      .start()
-      .then(async () => {
-        await connection.invoke(
-          'JoinSession',
-          sessionId,
-          currentParticipant.playerId,
-          currentParticipant.playerName,
-        );
-      })
-      .catch((err: unknown) => {
-        console.error('SignalR error:', err);
-      });
+    // Delay start slightly or check isDisposed so React StrictMode's instant unmount doesn't abort negotiation
+    const startTimer = setTimeout(() => {
+      if (isDisposed) return;
 
-    hubConnectionRef.current = connection;
+      connection
+        .start()
+        .then(async () => {
+          if (isDisposed) {
+            await connection.stop();
+            return;
+          }
+          hubConnectionRef.current = connection;
+          await connection.invoke(
+            'JoinSession',
+            sessionId,
+            currentParticipant.playerId,
+            currentParticipant.playerName,
+          );
+          console.log('✅ SignalR Connected & Joined Session:', sessionId);
+        })
+        .catch((err: unknown) => {
+          // Ignore AbortError caused by component unmount
+          if (isDisposed) return;
+          console.error('SignalR error:', err);
+        });
+    }, 50);
 
     return () => {
-      if (hubConnectionRef.current) {
-        hubConnectionRef.current
+      isDisposed = true;
+      clearTimeout(startTimer);
+
+      if (connection.state === signalR.HubConnectionState.Connected) {
+        connection
           .invoke('LeaveSession', sessionId, currentParticipant.playerId)
           .catch(() => {})
           .finally(() => {
-            hubConnectionRef.current?.stop();
+            void connection.stop();
           });
+      } else if (connection.state !== signalR.HubConnectionState.Disconnected) {
+        void connection.stop();
       }
+      hubConnectionRef.current = null;
     };
   }, [sessionId, currentParticipant.playerId, currentParticipant.playerName]);
+
 
   // --- 4. TOKEN DRAG & DROP WITH GEOMETRIC PROJECTION ---
   const canMoveToken = (token: MapTokenDto) => {
