@@ -27,7 +27,7 @@ function LogIn({
   const navigate = useNavigate()
 
   function handleAuthSuccess(user: AuthResponseDto) {
-    navigate('/profile', {
+    navigate('/main', {
       state: {
         userId: user.userId,
         username: user.username,
