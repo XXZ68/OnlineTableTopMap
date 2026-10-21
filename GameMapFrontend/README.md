@@ -20,7 +20,3 @@ If you are developing a production application, we recommend using TypeScript wi
 .env {
     VITE_API_URL=http://localhost:5089
 }
-
-API docs:
-https://5e-bits.github.io/docs/api
-ASP.NET

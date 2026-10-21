@@ -3,7 +3,6 @@ using GameMapBackend.Data;
 
 namespace GameMapBackend.Features.Token;
 
-
 public interface ITokenService
 {
     Task<List<MapTokenDto>> GetTokensByMapAsync(Guid mapId, Guid sessionId);
@@ -18,12 +17,9 @@ public class TokenService : ITokenService
 {
     private readonly AppDbContext _context;
 
-    private readonly IWebHostEnvironment _env;
-
-    public TokenService(AppDbContext context, IWebHostEnvironment env)
+    public TokenService(AppDbContext context)
     {
         _context = context;
-        _env = env;
     }
 
     public async Task<List<MapTokenDto>> GetTokensByMapAsync(Guid mapId, Guid sessionId)
@@ -41,7 +37,6 @@ public class TokenService : ITokenService
         var character = await _context.Characters.FindAsync(dto.CharacterId);
         if (character == null) return null;
 
-    
         var token = new MapTokenEntity
         {
             MapId = mapId,
@@ -77,17 +72,6 @@ public class TokenService : ITokenService
             "gargantuan" => 4,
             _ => 1
         };
-
-        var tokenImageUrl = $"/tokens/monsters/{monster.Index}.png";
-        var filePath = Path.Combine(
-            _env.WebRootPath,
-            tokenImageUrl.TrimStart('/')
-        );
-        if (!File.Exists(filePath))
-        {
-            return null; // Or handle the missing image another way
-        }
-
 
         var token = new MapTokenEntity
         {
