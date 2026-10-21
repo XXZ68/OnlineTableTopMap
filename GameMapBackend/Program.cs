@@ -11,6 +11,7 @@ using GameMapBackend.Features.Token;
 using GameMapBackend.Features.User;
 using GameMapBackend.Hubs;
 using Microsoft.OpenApi;
+using Microsoft.AspNetCore.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -49,6 +50,11 @@ builder.Services.AddCors(options =>
               .AllowCredentials();
     });
 });
+
+builder.Services.AddScoped<
+    IPasswordHasher<UserEntity>,
+    PasswordHasher<UserEntity>
+>();
 
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<IMapService, MapService>();
