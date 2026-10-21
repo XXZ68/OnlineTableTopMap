@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import TextInput from '../atoms/TextInput'
 import Modal from '../atoms/Modal'
 import Button from '../atoms/Button'
+import { usePostApiGameSessionJoin } from '../../api'
 
 type JoinGameProps = {
   isOpen: boolean
@@ -14,43 +15,121 @@ export default function JoinGame({
   onClose,
 }: JoinGameProps) {
   const navigate = useNavigate()
-  const [lobbyName, setLobbyName] = useState('')
 
-  const handleLaunchLobby = (event: FormEvent<HTMLFormElement>) => {
+  const [gameId, setGameId] = useState('')
+  const [username, setUsername] = useState('')
+  const [error, setError] = useState('')
+
+  const joinSession = usePostApiGameSessionJoin({
+    mutation: {
+      onSuccess: (response) => {
+        const session = response.data
+
+        onClose()
+
+        navigate(`/game/${session.id}`, {
+          state: { username },
+        })
+      },
+      onError: () => {
+        setError(
+          'Session konnte nicht beigetreten werden. Bitte überprüfe den Game-Code.',
+        )
+      },
+    },
+  })
+
+  const handleJoinGame = (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault()
+    setError('')
 
-    console.log(`Launching lobby "${lobbyName}"`)
+    const normalizedGameId = gameId.trim().toUpperCase()
+    const normalizedUsername = username.trim()
 
-    onClose()
-    navigate('/game')
+    if (!normalizedGameId || !normalizedUsername) {
+      setError('Bitte Game-Code und Username eingeben.')
+      return
+    }
+
+    joinSession.mutate({
+      data: {
+        joinCode: normalizedGameId,
+        playerName: normalizedUsername
+      },
+    })
   }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose}>
-      <h2 className="text-xl font-bold mb-4">
+      <h2 className="mb-4 text-xl font-bold">
         Join Game
       </h2>
 
       <form
-        onSubmit={handleLaunchLobby}
+        onSubmit={handleJoinGame}
         className="space-y-4"
       >
-        <TextInput
-          type="text"
-          className="mt-1 block w-full rounded-md shadow-sm p-2"
-          placeholder="Game ID"
-          value={lobbyName}
-          onChange={(event) =>
-            setLobbyName(event.target.value)
-          }
-        />
+        <div>
+          <label
+            htmlFor="gameId"
+            className="block text-sm font-medium mb-1"
+          >
+            Game-Code
+          </label>
+
+          <TextInput
+            id="gameId"
+            type="text"
+            className="mt-1 block w-full rounded-md shadow-sm p-2"
+            placeholder="z. B. A1B2C3"
+            value={gameId}
+            onChange={(event) =>
+              setGameId(event.target.value)
+            }
+            required
+            maxLength={6}
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="username"
+            className="block text-sm font-medium mb-1"
+          >
+            Dein Username
+          </label>
+
+          <TextInput
+            id="username"
+            type="text"
+            className="mt-1 block w-full rounded-md shadow-sm p-2"
+            placeholder="Wie möchtest du heißen?"
+            value={username}
+            onChange={(event) =>
+              setUsername(event.target.value)
+            }
+            required
+            maxLength={24}
+          />
+        </div>
+
+        {error && (
+          <p className="text-sm text-red-500" role="alert">
+            {error}
+          </p>
+        )}
 
         <div className="flex flex-row gap-4 justify-center">
           <Button
             variant="primary"
             type="submit"
+            disabled={joinSession.isPending}
           >
-            Join Lobby
+            {joinSession.isPending
+              ? 'Beitreten...'
+              : 'Join Lobby'}
           </Button>
 
           <Button
