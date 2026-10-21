@@ -1,26 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { SimpleSectionCard } from '../components/atoms/SimpleSectionCard'
 import ThemeToggle from '../components/ThemeToggle'
 import LogIn from '../components/userActions/LogIn'
 import CreateGame from '../components/userActions/JoinGame'
 import Button from '../components/atoms/Button'
-import Cookies from '../components/EasterEggs/Cookies'
+import { useNavigate } from 'react-router-dom'
+import { AuthResponseDto } from '../model'
+
 
 export default function LandingPage() {
   const [isLoginOpen, setIsLoginOpen] = useState(false)
   const [isJoinGame, setIsJoinGame] = useState(false)
-  const [isCookieModalOpen, setIsCookieModalOpen] = useState(false)
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsCookieModalOpen(true)
-    }, 2000)
+  const navigate = useNavigate()
 
-    return () => clearTimeout(timer)
-  }, [])
-
-  const handleCloseModal = () => {
-    setIsCookieModalOpen(false)
+  function handleAuthSuccess(user: AuthResponseDto) {
+    navigate('/profile', {
+      state: {
+        userId: user.userId,
+        username: user.username,
+      },
+    })
   }
 
   return (
@@ -56,11 +56,7 @@ export default function LandingPage() {
       <LogIn
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
-      />
-
-      <Cookies
-        isOpen={isCookieModalOpen}
-        onClose={handleCloseModal}
+        onLoginSuccess={handleAuthSuccess}
       />
     </div>
   )
