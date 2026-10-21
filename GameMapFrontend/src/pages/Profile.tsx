@@ -4,11 +4,17 @@ import NavBar from '../components/layoutComponents/NavBar'
 import CreateCampaign from '../components/userActions/CreateCampaign'
 import CreateGame from '../components/userActions/CreateGame'
 import LayoutDM from '../layouts/LayoutDM'
+import { useLocation } from 'react-router-dom'
 
 export default function Profile() {
 
   const [createCampaign, setCreateCampaign] = useState(false);
   const [createGame, setCreateGame] = useState(false);
+  const { state } = useLocation()
+
+  const userId = state?.userId
+  const username = state?.username
+  console.log(userId, username)
   return (
     <>
      <NavBar />
