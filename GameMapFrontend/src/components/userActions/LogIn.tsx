@@ -125,7 +125,7 @@ function LogIn({
       <SignUp
         isOpen={isSignUp}
         onClose={() => setIsSignUp(false)}
-        onRegisterSuccess={() => {handleAuthSuccess}}
+        onRegisterSuccess={handleAuthSuccess}
       />
     </>
   )
