@@ -25,10 +25,36 @@ public class GameSessionController : ControllerBase
     /// </summary>
     /// <param name="dto">The session configuration details.</param>
     [HttpPost]
-    public async Task<ActionResult<GameSessionDto>> Create([FromBody] CreateSessionDto dto)
+    public async Task<ActionResult<GameSessionDto>> Create(
+        [FromBody] CreateSessionDto dto)
     {
-        var created = await _sessionService.CreateSessionAsync(dto);
-        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+        try
+        {
+            var created = await _sessionService.CreateSessionAsync(dto);
+
+            return CreatedAtAction(
+                nameof(GetById),
+                new { id = created.Id },
+                created);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Returns all game sessions belonging to a Gamemaster.
+    /// </summary>
+    [HttpGet("by-dungeon-master/{dungeonMasterId:guid}")]
+    public async Task<ActionResult<List<GameSessionDto>>>
+        GetByDungeonMaster(Guid dungeonMasterId)
+    {
+        var sessions =
+            await _sessionService.GetSessionsByDungeonMasterIdAsync(
+                dungeonMasterId);
+
+        return Ok(sessions);
     }
 
     /// <summary>

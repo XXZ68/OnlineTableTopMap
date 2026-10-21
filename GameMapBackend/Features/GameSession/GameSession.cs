@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using GameMapBackend.Features.Map;
+using GameMapBackend.Features.User;
 
 namespace GameMapBackend.Features.GameSession;
 
@@ -18,9 +19,10 @@ public class GameSessionEntity
     [MaxLength(10)]
     public string JoinCode { get; set; } = string.Empty;
 
-    [Required]
-    [MaxLength(100)]
-    public string DungeonMasterId { get; set; } = string.Empty;
+    public Guid DungeonMasterId { get; set; }
+
+    [ForeignKey(nameof(DungeonMasterId))]
+    public UserEntity? DungeonMaster { get; set; }
 
     public Guid? ActiveMapId { get; set; }
 

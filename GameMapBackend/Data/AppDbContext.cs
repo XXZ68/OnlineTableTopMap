@@ -54,7 +54,9 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<GameSessionEntity>()
-            .HasIndex(s => s.JoinCode)
-            .IsUnique();
+            .HasOne(session => session.DungeonMaster)
+            .WithMany(user => user.GameSessions)
+            .HasForeignKey(session => session.DungeonMasterId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -4,7 +4,7 @@ public record GameSessionDto(
     Guid Id,
     string SessionName,
     string JoinCode,
-    string DungeonMasterId,
+    Guid DungeonMasterId,
     Guid? ActiveMapId,
     List<ParticipantDto> Participants
 );
@@ -19,8 +19,7 @@ public record ParticipantDto(
 
 public record CreateSessionDto(
     string SessionName,
-    string DungeonMasterId,
-    string DungeonMasterName,
+    Guid DungeonMasterId,
     Guid? InitialMapId = null
 );
 

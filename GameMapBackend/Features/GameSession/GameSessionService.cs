@@ -11,6 +11,7 @@ public interface IGameSessionService
     Task<GameSessionDto?> JoinSessionAsync(JoinSessionDto dto);
     Task<Guid> CopyMapToSessionAsync(Guid sessionId, Guid mapId);
     Task<bool> SwitchActiveMapAsync(Guid sessionId, Guid newMapId);
+    Task<List<GameSessionDto>> GetSessionsByDungeonMasterIdAsync(Guid dungeonMasterId);
 }
 
 public class GameSessionService : IGameSessionService
@@ -22,29 +23,52 @@ public class GameSessionService : IGameSessionService
         _context = context;
     }
 
-    public async Task<GameSessionDto> CreateSessionAsync(CreateSessionDto dto)
+    public async Task<GameSessionDto> CreateSessionAsync(
+        CreateSessionDto dto)
     {
-        var joinCode = GenerateJoinCode();
+        var dungeonMaster = await _context.Users
+            .SingleOrDefaultAsync(u => u.Id == dto.DungeonMasterId);
+
+        if (dungeonMaster == null)
+        {
+            throw new KeyNotFoundException(
+                "Gamemaster nicht gefunden.");
+        }
 
         var session = new GameSessionEntity
         {
             SessionName = dto.SessionName,
-            DungeonMasterId = dto.DungeonMasterId,
-            JoinCode = joinCode,
+            DungeonMasterId = dungeonMaster.Id,
+            DungeonMaster = dungeonMaster,
+            JoinCode = GenerateJoinCode(),
             ActiveMapId = dto.InitialMapId
         };
 
         session.Participants.Add(new SessionParticipantEntity
         {
-            PlayerId = dto.DungeonMasterId,
-            PlayerName = dto.DungeonMasterName,
+            PlayerId = dungeonMaster.Id.ToString(),
+            PlayerName = dungeonMaster.Username,
             IsDungeonMaster = true
         });
 
         _context.GameSessions.Add(session);
+
         await _context.SaveChangesAsync();
 
         return MapToDto(session);
+    }
+    public async Task<List<GameSessionDto>>GetSessionsByDungeonMasterIdAsync(Guid dungeonMasterId)
+    {
+        var sessions = await _context.GameSessions
+            .AsNoTracking()
+            .Include(s => s.Participants)
+            .Where(s => s.DungeonMasterId == dungeonMasterId)
+            .OrderByDescending(s => s.CreatedAt)
+            .ToListAsync();
+
+        return sessions
+            .Select(MapToDto)
+            .ToList();
     }
 
     public async Task<GameSessionDto?> GetSessionByIdAsync(Guid sessionId)
@@ -126,7 +150,7 @@ public class GameSessionService : IGameSessionService
 
     private static string GenerateJoinCode()
     {
-        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         var random = new Random();
         return new string(Enumerable.Repeat(chars, 6).Select(s => s[random.Next(s.Length)]).ToArray());
     }

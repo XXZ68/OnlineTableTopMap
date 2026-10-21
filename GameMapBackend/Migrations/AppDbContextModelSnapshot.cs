@@ -204,9 +204,7 @@ namespace GameMapBackend.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("DungeonMasterId")
-                        .IsRequired()
-                        .HasMaxLength(100)
+                    b.Property<Guid>("DungeonMasterId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("JoinCode")
@@ -219,17 +217,11 @@ namespace GameMapBackend.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid?>("UserEntityId")
-                        .HasColumnType("TEXT");
-
                     b.HasKey("Id");
 
                     b.HasIndex("ActiveMapId");
 
-                    b.HasIndex("JoinCode")
-                        .IsUnique();
-
-                    b.HasIndex("UserEntityId");
+                    b.HasIndex("DungeonMasterId");
 
                     b.ToTable("GameSessions");
                 });
@@ -514,11 +506,15 @@ namespace GameMapBackend.Migrations
                         .WithMany()
                         .HasForeignKey("ActiveMapId");
 
-                    b.HasOne("GameMapBackend.Features.User.UserEntity", null)
+                    b.HasOne("GameMapBackend.Features.User.UserEntity", "DungeonMaster")
                         .WithMany("GameSessions")
-                        .HasForeignKey("UserEntityId");
+                        .HasForeignKey("DungeonMasterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("ActiveMap");
+
+                    b.Navigation("DungeonMaster");
                 });
 
             modelBuilder.Entity("GameMapBackend.Features.GameSession.SessionParticipantEntity", b =>
