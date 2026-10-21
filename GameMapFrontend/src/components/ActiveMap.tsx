@@ -236,15 +236,14 @@ export default function ActiveMap({
 
     // --- CASE A: Spawning a Monster from TokenBox ---
     const monsterSpawnData = event.dataTransfer.getData('application/vtt-spawn-monster');
-    
     if (monsterSpawnData) {
-      try {
-        const monster = JSON.parse(monsterSpawnData) as {
-          monsterIndex: string | number;
-          name: string;
-        };
+      const monster = JSON.parse(monsterSpawnData) as {
+        monsterIndex: string | number;
+        name: string;
+      };
 
-        const response = await postApiTokenMapMapIdSpawnMonster(
+      try {
+        await postApiTokenMapMapIdSpawnMonster(
           mapId,
           {
             monsterIndex: String(monster.monsterIndex),
@@ -255,18 +254,9 @@ export default function ActiveMap({
           },
           sessionId ? { sessionId } : undefined,
         );
-
-        const newToken = response.data;
-
-        setTokens((prev) =>
-          prev.some((token) => token.id === newToken.id)
-            ? prev
-            : [...prev, newToken],
-        );
       } catch (err: unknown) {
         console.error('Failed to spawn monster:', err);
       }
-
       return;
     }
 
