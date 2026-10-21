@@ -14,6 +14,8 @@ import TokenBox from './TokenBox';
 import { getApiMapId, postApiTokenMapMapIdPlaceCharacter, postApiTokenMapMapIdSpawnMonster } from '../api';
 import { ActiveSpellDto, GridDto, MapDetailDto, MapTokenDto, ParticipantDto, SpellCastEventDto } from '../model';
 
+import { getImageUrl } from '../utils/imageUrl';
+
 type ActiveMapProps = {
   sessionId: string;
   mapId: string;
@@ -403,7 +405,7 @@ export default function ActiveMap({
                   position: 'relative',
                   width: mapData.widthInPixels,
                   height: mapData.heightInPixels,
-                  backgroundImage: `url(${mapData.imageUrl})`,
+                  backgroundImage: `url("${getImageUrl(mapData.imageUrl)}")`,
                   backgroundSize: 'cover',
                   userSelect: 'none',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.8)',
@@ -484,7 +486,8 @@ export default function ActiveMap({
                   const top = (grid?.offsetY || 0) + token.gridY! * cellSize;
                   const draggable = canMoveToken(token);
                   const isSelected = selectedToken?.id === token.id;
-                  const hasImage = false;
+                  const hasImage = Boolean(token.tokenImageUrl);
+                  const tokenImageUrl = getImageUrl(token.tokenImageUrl);
                   const tokenName = token.name || 'Token';
 
                   return (
@@ -507,7 +510,7 @@ export default function ActiveMap({
                         height: `${size}px`,
                         borderRadius: '50%',
                         background: hasImage
-                          ? `url(${token.tokenImageUrl}) center/cover no-repeat`
+                          ? `url("${tokenImageUrl}") center/cover no-repeat`
                           : getTokenBackgroundColor(tokenName),
                         border: isSelected
                           ? '3px solid #f59e0b'
