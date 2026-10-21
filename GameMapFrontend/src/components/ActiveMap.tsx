@@ -51,6 +51,10 @@ export default function ActiveMap({
   const [activeSpells, setActiveSpells] = useState<ActiveSpellDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedToken, setSelectedToken] = useState<MapTokenDto>();
+  // Drag-and-drop landing preview state
+  const [previewCell, setPreviewCell] = useState<{ gridX: number; gridY: number } | null>(null);
+  const [draggedTokenSize, setDraggedTokenSize] = useState<number>(1);
+
 
   // References
   const hubConnectionRef = useRef<signalR.HubConnection | null>(null);
@@ -58,6 +62,25 @@ export default function ActiveMap({
 
   // Derived loading state
   const isLoading = !mapData || mapData.id !== mapId;
+
+  //Helper for Token Preview
+  const handleGlobalDragStartCapture = (event: DragEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    // If it's an existing board token, handleDragStart already sets its size
+    if (target.classList.contains('vtt-token')) return;
+
+    // Otherwise, it's being dragged from TokenBox! Read the card text:
+    const text = target.innerText?.toLowerCase() || '';
+    if (text.includes('size: gargantuan')) {
+      setDraggedTokenSize(4);
+    } else if (text.includes('size: huge')) {
+      setDraggedTokenSize(3);
+    } else if (text.includes('size: large')) {
+      setDraggedTokenSize(2);
+    } else {
+      setDraggedTokenSize(1);
+    }
+  };
 
   // --- 2. FETCH INITIAL MAP DATA ---
   useEffect(() => {
@@ -94,7 +117,7 @@ export default function ActiveMap({
       isMounted = false;
     };
   }, [mapId]);
-  
+
   // --- 3. SIGNALR REAL-TIME SYNC ---
   useEffect(() => {
     if (!sessionId) return;
@@ -221,11 +244,35 @@ export default function ActiveMap({
   }, [sessionId, currentParticipant.playerId, currentParticipant.playerName]);
 
 
-  // --- 4. TOKEN DRAG & DROP WITH GEOMETRIC PROJECTION ---
+   // --- 4. TOKEN DRAG & DROP WITH GEOMETRIC PROJECTION ---
+
   const canMoveToken = (token: MapTokenDto) => {
     if (currentParticipant?.isDungeonMaster) return true;
     if (token.isLocked) return false;
     return token.characterId === currentParticipant?.selectedCharacterId;
+  };
+
+  // Shared helper to convert mouse event coordinates into snapped (gridX, gridY)
+  const getSnappedGridCoords = (event: DragEvent<HTMLDivElement>): { gridX: number; gridY: number } | null => {
+    if (!grid || !mapContainerRef.current || !mapData?.widthInPixels || !mapData?.heightInPixels) {
+      return null;
+    }
+
+    const rect = mapContainerRef.current.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return null;
+
+    const canvasX = ((event.clientX - rect.left) / rect.width) * mapData.widthInPixels;
+    const canvasY = ((event.clientY - rect.top) / rect.height) * mapData.heightInPixels;
+
+    const cellSize = grid.cellSizeInPixels || 50;
+    const tokenRadius = (cellSize * draggedTokenSize) / 2;
+    const dropCenterX = canvasX - tokenRadius;
+    const dropCenterY = canvasY - tokenRadius;
+
+    const gridX = Math.round((dropCenterX - (grid.offsetX || 0)) / cellSize);
+    const gridY = Math.round((dropCenterY - (grid.offsetY || 0)) / cellSize);
+
+    return { gridX, gridY };
   };
 
   const handleDragStart = (event: DragEvent<HTMLDivElement>, token: MapTokenDto) => {
@@ -233,38 +280,45 @@ export default function ActiveMap({
       event.preventDefault();
       return;
     }
+    setDraggedTokenSize(token.sizeInCells || 1);
     if (token.id) {
       event.dataTransfer.setData('text/plain', token.id);
     }
   };
 
+  const handleDragEnd = () => {
+    setPreviewCell(null);
+    setDraggedTokenSize(1);
+  };
+
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
+    const coords = getSnappedGridCoords(event);
+    if (!coords) return;
+
+    // Only update state when the hovered grid cell actually changes (prevents lag!)
+    setPreviewCell((prev) =>
+      prev && prev.gridX === coords.gridX && prev.gridY === coords.gridY
+        ? prev
+        : coords,
+    );
+  };
+
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    // Clear preview if cursor leaves the map container
+    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+      setPreviewCell(null);
+    }
   };
 
   const handleDrop = async (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
+    setPreviewCell(null);
+    setDraggedTokenSize(1);
 
-    if (!grid || !mapContainerRef.current || !mapData || !mapData.widthInPixels || !mapData.heightInPixels) return;
-
-    // 1. Get real-time post-transform bounding rectangle
-    const rect = mapContainerRef.current.getBoundingClientRect();
-    if (!rect || rect.width === 0 || rect.height === 0) return;
-
-    // 2. Exact unscaled canvas coordinates
-      const canvasX = ((event.clientX - rect.left) / rect.width) * mapData.widthInPixels;
-      const canvasY = ((event.clientY - rect.top) / rect.height) * mapData.heightInPixels;
-
-    const cellSize = grid.cellSizeInPixels || 50;
-
-    // 3. Offset by half cell so the center aligns with release point
-    const tokenRadius = cellSize / 2;
-    const dropCenterX = canvasX - tokenRadius;
-    const dropCenterY = canvasY - tokenRadius;
-
-    // 4. Snap to nearest grid index
-    const targetGridX = Math.round((dropCenterX - (grid.offsetX || 0)) / cellSize);
-    const targetGridY = Math.round((dropCenterY - (grid.offsetY || 0)) / cellSize);
+    const coords = getSnappedGridCoords(event);
+    if (!coords) return;
+    const { gridX: targetGridX, gridY: targetGridY } = coords;
 
     // --- CASE A: Spawning a Monster from TokenBox ---
     const monsterSpawnData = event.dataTransfer.getData('application/vtt-spawn-monster');
@@ -285,7 +339,6 @@ export default function ActiveMap({
           },
           sessionId ? { sessionId } : undefined,
         );
-        // Add token to board immediately (and prevent duplicate when SignalR event arrives)
         setTokens((prev) =>
           prev.some((t) => t.id === res.data.id) ? prev : [...prev, res.data],
         );
@@ -295,22 +348,23 @@ export default function ActiveMap({
       return;
     }
 
-
     // --- CASE B: Placing a Character from TokenBox ---
     const characterPlaceData = event.dataTransfer.getData('application/vtt-place-character');
     if (characterPlaceData && sessionId) {
       const character = JSON.parse(characterPlaceData) as { characterId: string };
-
       try {
-        await postApiTokenMapMapIdPlaceCharacter(
+        const res = await postApiTokenMapMapIdPlaceCharacter(
           mapId,
           {
             characterId: character.characterId,
             gameSessionId: sessionId,
             gridX: targetGridX,
             gridY: targetGridY,
-          },
+            },
           { sessionId },
+        );
+        setTokens((prev) =>
+          prev.some((t) => t.id === res.data.id) ? prev : [...prev, res.data],
         );
       } catch (err: unknown) {
         console.error('Failed to place character:', err);
@@ -358,6 +412,8 @@ export default function ActiveMap({
 
   return (
     <div
+      onDragStartCapture={handleGlobalDragStartCapture}
+      onDragEndCapture={handleDragEnd}
       style={{
         position: 'relative',
         width: '100%',
@@ -366,6 +422,7 @@ export default function ActiveMap({
         background: '#121212',
       }}
     >
+      
       <TransformWrapper
         initialScale={1}
         minScale={0.2}
@@ -434,7 +491,13 @@ export default function ActiveMap({
               <div
                 ref={mapContainerRef}
                 onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) {
+                    setSelectedToken(undefined);
+                  }
+                }}
                 style={{
                   position: 'relative',
                   width: mapData.widthInPixels,
@@ -509,6 +572,43 @@ export default function ActiveMap({
                   </svg>
                 )}
 
+                {/* DRAG LANDING PREVIEW */}
+                {previewCell && grid && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: `${(grid.offsetX || 0) + previewCell.gridX * cellSize}px`,
+                      top: `${(grid.offsetY || 0) + previewCell.gridY * cellSize}px`,
+                      width: `${draggedTokenSize * cellSize}px`,
+                      height: `${draggedTokenSize * cellSize}px`,
+                      borderRadius: '50%',
+                      border: '2px dashed #38bdf8',
+                      backgroundColor: 'rgba(56, 189, 248, 0.22)',
+                      boxShadow: '0 0 12px rgba(56, 189, 248, 0.5), inset 0 0 8px rgba(56, 189, 248, 0.35)',
+                      pointerEvents: 'none',
+                      zIndex: 50,
+                      transition: 'left 0.06s ease-out, top 0.06s ease-out',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: '10px',
+                        fontWeight: 'bold',
+                        color: '#bae6fd',
+                        background: 'rgba(15, 23, 42, 0.75)',
+                        padding: '1px 5px',
+                        borderRadius: '4px',
+                      }}
+                    >
+                      ({previewCell.gridX}, {previewCell.gridY})
+                    </span>
+                  </div>
+                )}
+
+                
                 {/* TOKENS LAYER */}
                 {tokens.map((token) => {
                   if (!token.isVisibleToPlayers && !currentParticipant?.isDungeonMaster) {
@@ -529,6 +629,7 @@ export default function ActiveMap({
                       className="vtt-token"
                       draggable={draggable}
                       onDragStart={(event) => handleDragStart(event, token)}
+                      onDragEnd={handleDragEnd}
                       onClick={() => {
                         if (currentParticipant?.isDungeonMaster) {
                           setSelectedToken(token);
