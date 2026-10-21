@@ -83,25 +83,48 @@ public class GameSessionService : IGameSessionService
 
     public async Task<GameSessionDto?> JoinSessionAsync(JoinSessionDto dto)
     {
+        var joinCode = dto.JoinCode.Trim().ToUpperInvariant();
+
         var session = await _context.GameSessions
             .Include(s => s.Participants)
-            .FirstOrDefaultAsync(s => s.JoinCode.ToUpper() == dto.JoinCode.ToUpper());
+            .FirstOrDefaultAsync(s => s.JoinCode == joinCode);
 
-        if (session == null) return null;
+        if (session == null)
+            return null;
 
-        var existing = session.Participants.FirstOrDefault(p => p.PlayerId == dto.PlayerId);
-        if (existing == null)
+        var existing = session.Participants
+            .FirstOrDefault(p => p.PlayerId == dto.PlayerId);
+
+        if (existing != null)
         {
-            session.Participants.Add(new SessionParticipantEntity
+            existing.PlayerName = dto.PlayerName;
+
+            if (dto.CharacterId.HasValue)
             {
-                GameSessionId = session.Id,
-                PlayerId = dto.PlayerId,
-                PlayerName = dto.PlayerName,
-                SelectedCharacterId = dto.CharacterId,
-                IsDungeonMaster = false
-            });
+                existing.SelectedCharacterId = dto.CharacterId;
+            }
+
             await _context.SaveChangesAsync();
+
+            return MapToDto(session);
         }
+
+        var participant = new SessionParticipantEntity
+        {
+            Id = Guid.NewGuid(),
+            GameSessionId = session.Id,
+            PlayerId = dto.PlayerId,
+            PlayerName = dto.PlayerName,
+            SelectedCharacterId = dto.CharacterId,
+            IsDungeonMaster = false,
+            JoinedAt = DateTime.UtcNow
+        };
+
+        session.Participants.Add(participant);
+
+        _context.Entry(participant).State = EntityState.Added;
+
+        await _context.SaveChangesAsync();
 
         return MapToDto(session);
     }

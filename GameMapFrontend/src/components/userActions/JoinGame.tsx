@@ -56,7 +56,8 @@ export default function JoinGame({
     joinSession.mutate({
       data: {
         joinCode: normalizedGameId,
-        playerName: normalizedUsername
+        playerName: normalizedUsername,
+        playerId: normalizedUsername + "_id"
       },
     })
   }
