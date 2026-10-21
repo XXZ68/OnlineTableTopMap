@@ -125,7 +125,9 @@ export default function ActiveMap({
     );
 
     connection.on('TokenSpawned', (newToken: MapTokenDto) => {
-      setTokens((prev) => [...prev, newToken]);
+      setTokens((prev) =>
+        prev.some((t) => t.id === newToken.id) ? prev : [...prev, newToken],
+      );
     });
 
     connection.on('TokenHpChanged', (tokenId: string, newHp: number) => {
@@ -241,9 +243,8 @@ export default function ActiveMap({
         monsterIndex: string | number;
         name: string;
       };
-
       try {
-        await postApiTokenMapMapIdSpawnMonster(
+        const res = await postApiTokenMapMapIdSpawnMonster(
           mapId,
           {
             monsterIndex: String(monster.monsterIndex),
@@ -254,11 +255,16 @@ export default function ActiveMap({
           },
           sessionId ? { sessionId } : undefined,
         );
+        // Add token to board immediately (and prevent duplicate when SignalR event arrives)
+        setTokens((prev) =>
+          prev.some((t) => t.id === res.data.id) ? prev : [...prev, res.data],
+        );
       } catch (err: unknown) {
         console.error('Failed to spawn monster:', err);
       }
       return;
     }
+
 
     // --- CASE B: Placing a Character from TokenBox ---
     const characterPlaceData = event.dataTransfer.getData('application/vtt-place-character');

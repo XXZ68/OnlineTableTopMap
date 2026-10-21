@@ -76,6 +76,7 @@ public class TokenService : ITokenService
         var token = new MapTokenEntity
         {
             MapId = mapId,
+            GameSessionId = dto.GameSessionId,
             MonsterIndex = monster.Index,
             Name = dto.CustomName ?? monster.Name,
             TokenImageUrl = $"/tokens/monsters/{monster.Index}.png",
