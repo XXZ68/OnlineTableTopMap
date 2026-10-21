@@ -1,9 +1,8 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
-import Main from './pages/Main';
 import './App.css';
-import Profile from './pages/Profile';
-import BattleMapTestPage from './pages/BattleMapTestPage'
+import Game from './pages/Game'
+import Main from './pages/Main'
 
 function App() {
   return (
@@ -11,14 +10,11 @@ function App() {
       <Routes>
         {/* Landing Page (Login & Join Game triggers) */}
         <Route path="/" element={<LandingPage />} />
-
-        {/* Main Game Board Page */}
-        <Route path="/game" element={<Main />} />
-
-        <Route path="/profile" element={<Profile />} />
+        <Route path="/main" element={<Main />} />
 
         <Route path="/418" element={<div>Im a teapot</div>} />
-        <Route path="/test/battlemap" element={<BattleMapTestPage />} />
+        <Route path="/game" element={<Game />} />
+        
       </Routes>
     </Router>
   )
