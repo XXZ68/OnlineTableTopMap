@@ -24,36 +24,53 @@ public class MapHub : Hub<IMapClient>
         _spellService = spellService;
     }
 
-    /// <summary>
-    /// Joins a specific game session room and informs other participants.
-    /// </summary>
-    /// <param name="sessionId">The session identifier used as the SignalR group name.</param>
-    /// <param name="playerId">The user ID of the joining player.</param>
-    /// <param name="playerName">The display name of the joining player.</param>
+    // =========================================================================
+    // SESSION MANAGEMENT
+    // =========================================================================
+
     public async Task JoinSession(string sessionId, string playerId, string playerName)
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, sessionId);
         await Clients.OthersInGroup(sessionId).PlayerJoined(playerId, playerName);
     }
 
-    /// <summary>
-    /// Leaves a game session room and notifies remaining participants.
-    /// </summary>
-    /// <param name="sessionId">The session identifier.</param>
-    /// <param name="playerId">The user ID of the disconnecting player.</param>
     public async Task LeaveSession(string sessionId, string playerId)
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, sessionId);
         await Clients.OthersInGroup(sessionId).PlayerLeft(playerId);
     }
 
+    // =========================================================================
+    // TOKEN ACTIONS
+    // =========================================================================
+
     /// <summary>
-    /// Moves a token to new grid coordinates and broadcasts the new position in real time.
+    /// Places a player character token on the map and broadcasts TokenSpawned.
     /// </summary>
-    /// <param name="sessionId">The session identifier.</param>
-    /// <param name="tokenId">The unique identifier of the token.</param>
-    /// <param name="targetX">Target column coordinate on the grid.</param>
-    /// <param name="targetY">Target row coordinate on the grid.</param>
+    public async Task PlaceCharacterToken(string sessionId, Guid mapId, PlaceCharacterTokenDto dto)
+    {
+        var token = await _tokenService.PlaceCharacterTokenAsync(mapId, dto);
+        if (token != null)
+        {
+            await Clients.Group(sessionId).TokenSpawned(token);
+        }
+    }
+
+    /// <summary>
+    /// Spawns a monster token from the compendium and broadcasts TokenSpawned.
+    /// </summary>
+    public async Task SpawnMonsterToken(string sessionId, Guid mapId, SpawnMonsterTokenDto dto)
+    {
+        var token = await _tokenService.SpawnMonsterTokenAsync(mapId, dto);
+        if (token != null)
+        {
+            await Clients.Group(sessionId).TokenSpawned(token);
+        }
+    }
+
+    /// <summary>
+    /// Moves a token to new grid coordinates and broadcasts TokenMoved.
+    /// </summary>
     public async Task MoveToken(string sessionId, Guid tokenId, int targetX, int targetY)
     {
         var updated = await _tokenService.MoveTokenAsync(tokenId, targetX, targetY);
@@ -64,11 +81,36 @@ public class MapHub : Hub<IMapClient>
     }
 
     /// <summary>
-    /// Triggers a spell cast, calculates areas/concentration, and broadcasts the event.
+    /// Updates a token's HP (clamped between 0 and MaxHp) and broadcasts TokenHpChanged.
     /// </summary>
-    /// <param name="sessionId">The session identifier.</param>
-    /// <param name="mapId">The battlemap identifier.</param>
-    /// <param name="dto">The spell cast parameters.</param>
+    public async Task UpdateTokenHp(string sessionId, Guid tokenId, int newHp)
+    {
+        var updated = await _tokenService.UpdateHpAsync(tokenId, newHp);
+        if (updated != null)
+        {
+            await Clients.Group(sessionId).TokenHpChanged(tokenId, updated.CurrentHp);
+        }
+    }
+
+    /// <summary>
+    /// Deletes a token from the map and broadcasts TokenRemoved.
+    /// </summary>
+    public async Task RemoveToken(string sessionId, Guid tokenId)
+    {
+        var deleted = await _tokenService.DeleteTokenAsync(tokenId);
+        if (deleted)
+        {
+            await Clients.Group(sessionId).TokenRemoved(tokenId);
+        }
+    }
+
+    // =========================================================================
+    // SPELL ACTIONS
+    // =========================================================================
+
+    /// <summary>
+    /// Triggers a spell cast, calculates areas/concentration, and broadcasts SpellCasted.
+    /// </summary>
     public async Task CastSpell(string sessionId, Guid mapId, CastSpellDto dto)
     {
         var spellEvent = await _spellService.CastSpellAsync(mapId, dto);
@@ -79,11 +121,24 @@ public class MapHub : Hub<IMapClient>
     }
 
     /// <summary>
-    /// Modifies grid parameters (offsets, opacity, size) and broadcasts the updated grid.
+    /// Dismisses an active concentration/persistent spell and broadcasts SpellDismissed.
     /// </summary>
-    /// <param name="sessionId">The session identifier.</param>
-    /// <param name="mapId">The battlemap identifier.</param>
-    /// <param name="dto">The updated grid properties.</param>
+    public async Task DismissSpell(string sessionId, Guid activeSpellEffectId)
+    {
+        var dismissed = await _spellService.DismissActiveSpellAsync(activeSpellEffectId);
+        if (dismissed)
+        {
+            await Clients.Group(sessionId).SpellDismissed(activeSpellEffectId);
+        }
+    }
+
+    // =========================================================================
+    // GRID & MAP ACTIONS
+    // =========================================================================
+
+    /// <summary>
+    /// Modifies grid parameters (offsets, opacity, size) and broadcasts GridUpdated.
+    /// </summary>
     public async Task UpdateGrid(string sessionId, Guid mapId, UpdateGridDto dto)
     {
         var updatedGrid = await _gridService.UpdateGridAsync(mapId, dto);
@@ -91,5 +146,13 @@ public class MapHub : Hub<IMapClient>
         {
             await Clients.Group(sessionId).GridUpdated(updatedGrid);
         }
+    }
+
+    /// <summary>
+    /// Broadcasts to all players in the session that the active battlemap changed.
+    /// </summary>
+    public async Task ChangeMap(string sessionId, Guid newMapId)
+    {
+        await Clients.Group(sessionId).MapChanged(newMapId);
     }
 }

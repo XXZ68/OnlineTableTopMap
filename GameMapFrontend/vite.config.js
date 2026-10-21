@@ -18,6 +18,11 @@ export default defineConfig({
         target: 'http://localhost:5089',
         changeOrigin: true,
       },
+      '/hubs': {
+        target: 'http://localhost:5089',
+        changeOrigin: true,
+        ws: true, // <-- Proxies SignalR WebSockets to port 5089!
+      },
     },
   },
 })

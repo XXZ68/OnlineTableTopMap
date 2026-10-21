@@ -94,12 +94,15 @@ export default function ActiveMap({
       isMounted = false;
     };
   }, [mapId]);
+  
   // --- 3. SIGNALR REAL-TIME SYNC ---
   useEffect(() => {
     if (!sessionId) return;
 
+    let isDisposed = false;
+
     const connection = new signalR.HubConnectionBuilder()
-      .withUrl(`/hubs/map`, {
+      .withUrl('/hubs/map', {
         withCredentials: true,
       })
       .withAutomaticReconnect()
@@ -115,7 +118,6 @@ export default function ActiveMap({
               : token,
           ),
         );
-
         setSelectedToken((prev) =>
           prev && prev.id === tokenId
             ? { ...prev, gridX: newGridX, gridY: newGridY }
@@ -125,7 +127,9 @@ export default function ActiveMap({
     );
 
     connection.on('TokenSpawned', (newToken: MapTokenDto) => {
-      setTokens((prev) => [...prev, newToken]);
+      setTokens((prev) =>
+        prev.some((t) => t.id === newToken.id) ? prev : [...prev, newToken],
+      );
     });
 
     connection.on('TokenHpChanged', (tokenId: string, newHp: number) => {
@@ -134,7 +138,6 @@ export default function ActiveMap({
           token.id === tokenId ? { ...token, currentHp: newHp } : token,
         ),
       );
-
       setSelectedToken((prev) =>
         prev && prev.id === tokenId ? { ...prev, currentHp: newHp } : prev,
       );
@@ -150,44 +153,73 @@ export default function ActiveMap({
     });
 
     connection.on('SpellCasted', (spellEvent: SpellCastEventDto) => {
-      setActiveSpells((prev) => [...prev, spellEvent]);
+      setActiveSpells((prev) => [
+        ...prev,
+        {
+          id: spellEvent.activeSpellId || spellEvent.eventId,
+          mapId: spellEvent.mapId,
+          spellIndex: spellEvent.spellIndex,
+          spellName: spellEvent.spellName,
+          originGridX: spellEvent.targetGridX,
+          originGridY: spellEvent.targetGridY,
+          radiusInCells: spellEvent.radiusInCells,
+          shape: spellEvent.areaShape,
+          colorHex: spellEvent.colorHex,
+        },
+      ]);
     });
 
     connection.on('SpellDismissed', (spellId: string) => {
       setActiveSpells((prev) =>
-        prev.filter(
-          (spell) => spell.id !== spellId,
-        ),
+        prev.filter((spell) => spell.id !== spellId),
       );
     });
 
-    connection
-      .start()
-      .then(async () => {
-        await connection.invoke(
-          'JoinSession',
-          sessionId,
-          currentParticipant.playerId,
-          currentParticipant.playerName,
-        );
-      })
-      .catch((err: unknown) => {
-        console.error('SignalR error:', err);
-      });
+    // Delay start slightly or check isDisposed so React StrictMode's instant unmount doesn't abort negotiation
+    const startTimer = setTimeout(() => {
+      if (isDisposed) return;
 
-    hubConnectionRef.current = connection;
+      connection
+        .start()
+        .then(async () => {
+          if (isDisposed) {
+            await connection.stop();
+            return;
+          }
+          hubConnectionRef.current = connection;
+          await connection.invoke(
+            'JoinSession',
+            sessionId,
+            currentParticipant.playerId,
+            currentParticipant.playerName,
+          );
+          console.log('✅ SignalR Connected & Joined Session:', sessionId);
+        })
+        .catch((err: unknown) => {
+          // Ignore AbortError caused by component unmount
+          if (isDisposed) return;
+          console.error('SignalR error:', err);
+        });
+    }, 50);
 
     return () => {
-      if (hubConnectionRef.current) {
-        hubConnectionRef.current
+      isDisposed = true;
+      clearTimeout(startTimer);
+
+      if (connection.state === signalR.HubConnectionState.Connected) {
+        connection
           .invoke('LeaveSession', sessionId, currentParticipant.playerId)
           .catch(() => {})
           .finally(() => {
-            hubConnectionRef.current?.stop();
+            void connection.stop();
           });
+      } else if (connection.state !== signalR.HubConnectionState.Disconnected) {
+        void connection.stop();
       }
+      hubConnectionRef.current = null;
     };
   }, [sessionId, currentParticipant.playerId, currentParticipant.playerName]);
+
 
   // --- 4. TOKEN DRAG & DROP WITH GEOMETRIC PROJECTION ---
   const canMoveToken = (token: MapTokenDto) => {
@@ -236,15 +268,13 @@ export default function ActiveMap({
 
     // --- CASE A: Spawning a Monster from TokenBox ---
     const monsterSpawnData = event.dataTransfer.getData('application/vtt-spawn-monster');
-    
     if (monsterSpawnData) {
+      const monster = JSON.parse(monsterSpawnData) as {
+        monsterIndex: string | number;
+        name: string;
+      };
       try {
-        const monster = JSON.parse(monsterSpawnData) as {
-          monsterIndex: string | number;
-          name: string;
-        };
-
-        const response = await postApiTokenMapMapIdSpawnMonster(
+        const res = await postApiTokenMapMapIdSpawnMonster(
           mapId,
           {
             monsterIndex: String(monster.monsterIndex),
@@ -255,20 +285,16 @@ export default function ActiveMap({
           },
           sessionId ? { sessionId } : undefined,
         );
-
-        const newToken = response.data;
-
+        // Add token to board immediately (and prevent duplicate when SignalR event arrives)
         setTokens((prev) =>
-          prev.some((token) => token.id === newToken.id)
-            ? prev
-            : [...prev, newToken],
+          prev.some((t) => t.id === res.data.id) ? prev : [...prev, res.data],
         );
       } catch (err: unknown) {
         console.error('Failed to spawn monster:', err);
       }
-
       return;
     }
+
 
     // --- CASE B: Placing a Character from TokenBox ---
     const characterPlaceData = event.dataTransfer.getData('application/vtt-place-character');
