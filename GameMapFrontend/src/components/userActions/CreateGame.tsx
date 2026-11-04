@@ -1,5 +1,7 @@
-import { useState, useEffect, type FormEvent } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useGetApiMap } from '../../api'
+import type { GameSessionDto, MapSummaryDto } from '../../model'
 import TextInput from '../atoms/TextInput'
 import Modal from '../atoms/Modal'
 import Button from '../atoms/Button'
@@ -7,22 +9,6 @@ import Button from '../atoms/Button'
 type CurrentUser = {
   userId: string
   username: string
-}
-
-type MapSummary = {
-  id: string
-  title: string
-  widthInPixels: number
-  heightInPixels: number
-}
-
-type GameSession = {
-  id: string
-  joinCode: string
-  sessionName: string
-  dungeonMasterId: string | null
-  dungeonMasterName: string
-  initialMapId: string | null
 }
 
 type CreateGameProps = {
@@ -45,42 +31,29 @@ export default function CreateGame({
   const [selectedMapTitle, setSelectedMapTitle] = useState('')
 
   // Map picker state
-  const [availableMaps, setAvailableMaps] = useState<MapSummary[]>([])
-  const [isLoadingMaps, setIsLoadingMaps] = useState(false)
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const {
+    data: mapsData,
+    isLoading: isLoadingMaps,
+    error: mapsError,
+  } = useGetApiMap({ query: { enabled: isOpen } })
+
+  const availableMaps = mapsData?.data ?? []
+  const filteredMaps = availableMaps.filter((map) =>
+    (map.title ?? '').toLowerCase().includes(searchTerm.toLowerCase()),
+  )
 
   // Request status states
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
-  // Fetch uploaded maps when modal opens
-  useEffect(() => {
-    if (!isOpen) return
+  const mapPickerLabel = isMapPickerOpen ? 'Close' : 'Browse Maps'
 
-    const fetchMaps = async () => {
-      try {
-        setIsLoadingMaps(true)
-
-        const response = await fetch('/api/Map')
-
-        if (response.ok) {
-          const maps: MapSummary[] = await response.json()
-          setAvailableMaps(maps)
-        }
-      } catch (error) {
-        console.error('Failed to load battlemaps:', error)
-      } finally {
-        setIsLoadingMaps(false)
-      }
-    }
-
-    fetchMaps()
-  }, [isOpen])
-
-  const handleSelectMap = (map: MapSummary | null) => {
+  const handleSelectMap = (map: MapSummaryDto | null) => {
     if (map) {
-      setSelectedMapId(map.id)
-      setSelectedMapTitle(map.title)
+      setSelectedMapId(map.id ?? '')
+      setSelectedMapTitle(map.title || 'Unnamed Map')
     } else {
       setSelectedMapId('')
       setSelectedMapTitle('')
@@ -92,14 +65,18 @@ export default function CreateGame({
   const handleLaunchLobby = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
 
+    if (!currentUser?.userId) {
+      setErrorMessage('Please sign in before creating a game session.')
+      return
+    }
+
     setIsLoading(true)
     setErrorMessage('')
 
     try {
       const payload = {
         sessionName: sessionName.trim(),
-        dungeonMasterId: currentUser?.userId ?? null,
-        dungeonMasterName: currentUser?.username ?? 'Dungeon Master',
+        dungeonMasterId: currentUser.userId,
         initialMapId: selectedMapId || null,
       }
 
@@ -112,24 +89,26 @@ export default function CreateGame({
       })
 
       if (!response.ok) {
+        const details = await response.text()
         throw new Error(
-          `Failed to create session (HTTP ${response.status})`,
+          `Failed to create session (HTTP ${response.status})${details ? `: ${details}` : ''}`,
         )
       }
 
-      const createdSession: GameSession = await response.json()
+      const createdSession: GameSessionDto = await response.json()
 
-      const roomCode = createdSession.joinCode
+      const roomCode = createdSession.joinCode ?? ''
 
       setJoinCode(roomCode)
 
       onClose()
 
-      navigate(`/api/game/${roomCode}`, {
+      navigate(`/game/${createdSession.id}`, {
         state: {
           session: createdSession,
           sessionId: createdSession.id,
           joinCode: roomCode,
+          currentUser,
         },
       })
     } catch (error: unknown) {
@@ -145,6 +124,56 @@ export default function CreateGame({
     } finally {
       setIsLoading(false)
     }
+  }
+
+  let mapPickerContent: ReactNode
+
+  if (isLoadingMaps) {
+    mapPickerContent = (
+      <p className="text-xs p-2">
+        Loading maps...
+      </p>
+    )
+  } else if (mapsError) {
+    const message = mapsError instanceof Error
+      ? mapsError.message
+      : 'Failed to retrieve maps.'
+
+    mapPickerContent = (
+      <p role="alert" className="text-xs text-red-500 p-2">
+        {message}
+      </p>
+    )
+  } else if (filteredMaps.length === 0) {
+    const message = availableMaps.length === 0
+      ? 'No uploaded maps found.'
+      : 'No matching maps found.'
+
+    mapPickerContent = (
+      <p className="text-xs p-2">
+        {message}
+      </p>
+    )
+  } else {
+    mapPickerContent = filteredMaps.map((map) => (
+      <button
+        key={map.id}
+        type="button"
+        disabled={isLoading || !map.id}
+        onClick={() => handleSelectMap(map)}
+        className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-slate-900 flex items-center justify-between ${
+          selectedMapId === map.id
+            ? 'bg-blue-100 font-semibold'
+            : ''
+        }`}
+      >
+        <span>{map.title || 'Unnamed Map'}</span>
+
+        <span className="text-xs text-gray-400">
+          {map.widthInPixels}×{map.heightInPixels}px
+        </span>
+      </button>
+    ))
   }
 
   return (
@@ -208,10 +237,10 @@ export default function CreateGame({
             Initial Battlemap
           </label>
 
-          <div className="flex gap-2 mt-1">
+          <div className="flex flex-nowrap items-center gap-2 mt-1 [&>div]:min-w-0 [&>div]:flex-1">
             <TextInput
               type="text"
-              className="block w-full rounded-md shadow-sm p-2 cursor-not-allowed"
+              className="block h-10 w-full rounded-md shadow-sm p-2 cursor-not-allowed"
               placeholder="No map selected (optional)"
               disabled
               value={selectedMapTitle}
@@ -221,6 +250,8 @@ export default function CreateGame({
             {selectedMapId && (
               <Button
                 variant="secondary"
+                size="sm"
+                className="h-10 shrink-0"
                 type="button"
                 disabled={isLoading}
                 onClick={() => handleSelectMap(null)}
@@ -232,45 +263,29 @@ export default function CreateGame({
 
             <Button
               variant="secondary"
+              size="sm"
+              className="h-10 shrink-0 whitespace-nowrap"
               type="button"
-              disabled={isLoading || isLoadingMaps}
+              disabled={isLoading}
               onClick={() => setIsMapPickerOpen(!isMapPickerOpen)}
             >
-              {isLoadingMaps
-                ? 'Loading...'
-                : isMapPickerOpen
-                  ? 'Close'
-                  : 'Browse Maps'}
+              {isLoadingMaps ? 'Loading...' : mapPickerLabel}
             </Button>
           </div>
 
           {/* Map Picker */}
           {isMapPickerOpen && (
-            <div className="mt-2 p-2 border rounded-md bg-white shadow-lg max-h-48 overflow-y-auto space-y-1">
-              {availableMaps.length === 0 ? (
-                <p className="text-xs text-gray-500 p-2">
-                  No uploaded maps found.
-                </p>
-              ) : (
-                availableMaps.map((map) => (
-                  <button
-                    key={map.id}
-                    type="button"
-                    onClick={() => handleSelectMap(map)}
-                    className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-blue-50 flex items-center justify-between ${
-                      selectedMapId === map.id
-                        ? 'bg-blue-100 font-semibold'
-                        : ''
-                    }`}
-                  >
-                    <span>{map.title}</span>
+            <div className="mt-2 p-2 border baseline rounded-md shadow-lg max-h-48 overflow-y-auto space-y-1">
+              <TextInput
+                type="text"
+                aria-label="Search saved maps"
+                placeholder="Search map titles..."
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                className="w-full text-sm p-2"
+              />
 
-                    <span className="text-xs text-gray-400">
-                      {map.widthInPixels}×{map.heightInPixels}px
-                    </span>
-                  </button>
-                ))
-              )}
+              {mapPickerContent}
             </div>
           )}
         </div>
