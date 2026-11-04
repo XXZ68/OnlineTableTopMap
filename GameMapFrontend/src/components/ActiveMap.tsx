@@ -14,6 +14,8 @@ import TokenBox from './TokenBox';
 import { getApiMapId, postApiTokenMapMapIdPlaceCharacter, postApiTokenMapMapIdSpawnMonster } from '../api';
 import { ActiveSpellDto, GridDto, MapDetailDto, MapTokenDto, ParticipantDto, SpellCastEventDto } from '../model';
 
+import { getImageUrl } from '../utils/imageUrl';
+
 type ActiveMapProps = {
   sessionId: string;
   mapId: string;
@@ -57,6 +59,10 @@ export default function ActiveMap({
   const [previewCell, setPreviewCell] = useState<{ gridX: number; gridY: number } | null>(null);
   const [draggedTokenSize, setDraggedTokenSize] = useState<number>(1);
 
+  // State of images
+  const [failedTokenImages, setFailedTokenImages] = useState<Set<string>>(
+    new Set(),
+  );
 
   // References
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -201,7 +207,7 @@ export default function ActiveMap({
   }, [connection]);
 
 
-   // --- 4. TOKEN DRAG & DROP WITH GEOMETRIC PROJECTION ---
+  // --- 4. TOKEN DRAG & DROP WITH GEOMETRIC PROJECTION ---
 
   const canMoveToken = (token: MapTokenDto) => {
     if (currentParticipant?.isDungeonMaster) return true;
@@ -319,7 +325,7 @@ export default function ActiveMap({
             gameSessionId: sessionId,
             gridX: targetGridX,
             gridY: targetGridY,
-            },
+          },
           { sessionId },
         );
         setTokens((prev) =>
@@ -384,7 +390,7 @@ export default function ActiveMap({
         background: '#121212',
       }}
     >
-      
+
       <TransformWrapper
         initialScale={1}
         minScale={0.2}
@@ -570,9 +576,9 @@ export default function ActiveMap({
                   </div>
                 )}
 
-                
+
                 {/* TOKENS LAYER */}
-                {tokens.map((token) => {
+                {tokens.map((token, index) => {
                   if (!token.isVisibleToPlayers && !currentParticipant?.isDungeonMaster) {
                     return null;
                   }
@@ -582,8 +588,29 @@ export default function ActiveMap({
                   const top = (grid?.offsetY || 0) + token.gridY! * cellSize;
                   const draggable = canMoveToken(token);
                   const isSelected = selectedToken?.id === token.id;
-                  const hasImage = false;
                   const tokenName = token.name || 'Token';
+                  const tokenImageUrl = token.tokenImageUrl
+                    ? getImageUrl(token.tokenImageUrl)
+                    : undefined;
+
+                  const hasImage =
+                    Boolean(tokenImageUrl) &&
+                    Boolean(token.id) &&
+                    !failedTokenImages.has(token.id!);
+
+                  //color circle around the token calc
+                  const hpPercent = token.maxHp
+                    ? Math.max(0, Math.min(100, ((token.currentHp ?? 0) / token.maxHp) * 100))
+                    : 0;
+                  const hpColor = hpPercent > 30 ? '#2dc653' : '#d90429';
+                  const ringWidth = Math.max(3, Math.round(size * 0.02)); // ring thickness in px
+                  const hpAngle = hpPercent * 3.6; // 0-360deg
+
+                   const stackIndex = tokens
+                  .slice(0, index)
+                  .filter((t) => t.gridX === token.gridX && t.gridY === token.gridY).length;
+
+                  const baseZ = 10 + index;
 
                   return (
                     <div
@@ -602,17 +629,16 @@ export default function ActiveMap({
                         position: 'absolute',
                         left: `${left}px`,
                         top: `${top}px`,
+                        zIndex: isSelected ? 1000 : baseZ,
                         width: `${size}px`,
                         height: `${size}px`,
                         borderRadius: '50%',
-                        background: hasImage
-                          ? `url(${token.tokenImageUrl}) center/cover no-repeat`
-                          : getTokenBackgroundColor(tokenName),
+                        background: getTokenBackgroundColor(tokenName),
                         border: isSelected
                           ? '3px solid #f59e0b'
                           : draggable
-                          ? '2px solid #52b788'
-                          : '2px solid #444',
+                            ? '2px solid #52b788'
+                            : '2px solid #444',
                         boxShadow: isSelected
                           ? '0 0 12px #f59e0b, inset 0 0 10px rgba(0,0,0,0.8)'
                           : '0 3px 8px rgba(0,0,0,0.7), inset 0 0 8px rgba(0,0,0,0.7)',
@@ -628,13 +654,38 @@ export default function ActiveMap({
                       }}
                     >
                       {/* Initials Placeholder when token has no image */}
+                      {/* Token Image */}
+                      {hasImage && tokenImageUrl && (
+                        <img
+                          src={tokenImageUrl}
+                          alt={tokenName}
+                          draggable={false}
+                          onError={() => {
+                            setFailedTokenImages(prev => new Set(prev).add(token.id!));
+                          }}
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            borderRadius: '50%',
+                            pointerEvents: 'none',
+                            zIndex: 1,
+                          }}
+                        />
+                      )}
+
+                      {/* Initialen mittig, nur ohne Bild (absolut, stört das Flex-Layout nicht) */}
                       {!hasImage && (
                         <span
                           style={{
-                            marginTop: 'auto',
-                            marginBottom: 'auto',
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -60%)',
                             fontSize: `${Math.max(12, size * 0.35)}px`,
-                            fontWeight: '900',
+                            fontWeight: 900,
                             color: '#f8fafc',
                             textShadow: '0 2px 4px rgba(0,0,0,0.9), 0 0 2px #000',
                             letterSpacing: '0.5px',
@@ -645,58 +696,48 @@ export default function ActiveMap({
                         </span>
                       )}
 
-                      {/* Readable name banner when token has no image */}
-                      {!hasImage && (
-                        <div
-                          style={{
-                            width: '92%',
-                            textAlign: 'center',
-                            fontSize: `${Math.max(9, Math.min(12, size * 0.18))}px`,
-                            fontWeight: '600',
-                            color: '#ffffff',
-                            textShadow: '0 1px 2px #000, 0 0 4px #000',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            background: 'rgba(0, 0, 0, 0.65)',
-                            borderRadius: '3px',
-                            padding: '1px 3px',
-                            marginBottom: '2px',
-                            pointerEvents: 'none',
-                          }}
-                        >
-                          {tokenName}
-                        </div>
-                      )}
-
-                      {/* Health Bar */}
+                      {/* Name unten, immer sichtbar (auch mit Bild) */}
                       <div
                         style={{
-                          width: '80%',
-                          height: '4px',
-                          background: 'rgba(0,0,0,0.8)',
-                          borderRadius: '2px',
-                          marginBottom: '2px',
+                          position: 'relative',
+                          zIndex: 3,
+                          marginTop: 'auto',
+                          width: '92%',
+                          textAlign: 'center',
+                          fontSize: `${Math.max(9, Math.min(12, size * 0.18))}px`,
+                          fontWeight: 600,
+                          color: '#ffffff',
+                          textShadow: '0 1px 2px #000, 0 0 4px #000',
+                          whiteSpace: 'nowrap',
                           overflow: 'hidden',
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.8)',
-                          marginTop: hasImage ? 'auto' : '0',
+                          textOverflow: 'ellipsis',
+                          background: 'rgba(0, 0, 0, 0.65)',
+                          borderRadius: '3px',
+                          padding: '1px 3px',
+                          marginBottom: '2px',
+                          pointerEvents: 'none',
                         }}
                       >
-                        <div
-                          style={{
-                            width: `${Math.max(
-                              0,
-                              Math.min(100, (token.currentHp! / token.maxHp!) * 100),
-                            )}%`,
-                            height: '100%',
-                            background:
-                              token.currentHp! / token.maxHp! > 0.3
-                                ? '#2dc653'
-                                : '#d90429',
-                            transition: 'width 0.2s ease',
-                          }}
-                        />
+                        {tokenName}
                       </div>
+
+                      {/* Circular health ring */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          borderRadius: '50%',
+                          background: `conic-gradient(
+                            from 0deg,
+                            ${hpColor} 0deg ${hpAngle}deg,
+                            rgba(0, 0, 0, 0.75) ${hpAngle}deg 360deg
+                          )`,
+                          WebkitMask: `radial-gradient(farthest-side, transparent calc(100% - ${ringWidth}px), #000 calc(100% - ${ringWidth}px + 1px))`,
+                          mask: `radial-gradient(farthest-side, transparent calc(100% - ${ringWidth}px), #000 calc(100% - ${ringWidth}px + 1px))`,
+                          pointerEvents: 'none',
+                          zIndex: 2,
+                        }}
+                      />
                     </div>
                   );
                 })}

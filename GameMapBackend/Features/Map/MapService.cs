@@ -3,6 +3,8 @@ using GameMapBackend.Data;
 using GameMapBackend.Features.Grid;
 using GameMapBackend.Features.Spell;
 using GameMapBackend.Features.Token;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
 
 namespace GameMapBackend.Features.Map;
 
@@ -141,38 +143,49 @@ public class MapService : IMapService
         );
     }
 
-    public async Task<MapDetailDto> CreateMapAsync(CreateMapDto dto, IFormFile imageFile)
+        public async Task<MapDetailDto> CreateMapAsync(CreateMapDto dto, IFormFile imageFile)
     {
+        const int targetWidth = 1920;
+        const int targetHeight = 1080;
+
         var uploadsFolder = Path.Combine(_env.WebRootPath ?? "wwwroot", "maps");
         if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
 
-        var fileExtension = Path.GetExtension(imageFile.FileName);
+        var fileExtension = Path.GetExtension(imageFile.FileName).ToLowerInvariant();
         var uniqueFileName = $"{Guid.NewGuid()}{fileExtension}";
         var filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
-        using (var stream = new FileStream(filePath, FileMode.Create))
+        // Load the uploaded image, scale down if > 1920x1080, and add black bars if < 1920x1080
+        await using (var inputStream = imageFile.OpenReadStream())
+        using (var image = await Image.LoadAsync(inputStream))
         {
-            await imageFile.CopyToAsync(stream);
+            image.Mutate(ctx => ctx.Resize(new ResizeOptions
+            {
+                Size = new Size(targetWidth, targetHeight),
+                Mode = ResizeMode.BoxPad, // Scales down if too big; adds black bars without stretching if too small
+                Position = AnchorPositionMode.Center,
+                PadColor = Color.Black
+            }));
+
+            await image.SaveAsync(filePath);
         }
 
-        int defaultWidth = 2000;
-        int defaultHeight = 2000;
         int cellSize = dto.InitialCellSize > 0 ? dto.InitialCellSize : 70;
 
         var map = new MapEntity
         {
             Title = dto.Title,
             ImageUrl = $"/maps/{uniqueFileName}",
-            WidthInPixels = defaultWidth,
-            HeightInPixels = defaultHeight
+            WidthInPixels = targetWidth,
+            HeightInPixels = targetHeight
         };
 
         var grid = new GridEntity
         {
             MapId = map.Id,
             CellSizeInPixels = cellSize,
-            Columns = defaultWidth / cellSize,
-            Rows = defaultHeight / cellSize,
+            Columns = targetWidth / cellSize,
+            Rows = targetHeight / cellSize,
             LineColor = "#000000",
             LineOpacity = 0.4,
             OffsetX = 0,
@@ -180,11 +193,13 @@ public class MapService : IMapService
         };
 
         map.Grid = grid;
+
         _context.Maps.Add(map);
         await _context.SaveChangesAsync();
 
         return (await GetMapByIdAsync(map.Id))!;
     }
+
 
     public async Task<bool> DeleteMapAsync(Guid id)
     {
