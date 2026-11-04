@@ -108,7 +108,10 @@ public class GameSessionController : ControllerBase
         var success = await _sessionService.SwitchActiveMapAsync(id, newMapId);
         if (!success) return BadRequest("Kartenwechsel fehlgeschlagen.");
 
-        await _hubContext.Clients.Group(id.ToString()).MapChanged(newMapId);
+        var session = await _sessionService.GetSessionByIdAsync(id);
+        if (session?.ActiveMapId is not Guid activeMapId) return NotFound();
+
+        await _hubContext.Clients.Group(id.ToString()).MapChanged(activeMapId);
         return NoContent();
     }
 }

@@ -35,6 +35,7 @@ export default function JoinGame({
   const [gameId, setGameId] = useState('')
   const [username, setUsername] = useState('')
   const [error, setError] = useState('')
+  const [playerId] = useState(() => `guest:${crypto.randomUUID()}`)
 
   // Session und Spieler
   const [session, setSession] = useState<Session | null>(null)
@@ -84,9 +85,6 @@ export default function JoinGame({
       setError('Bitte Game-Code und Username eingeben.')
       return
     }
-
-    // Für denselben Spieler muss diese ID gleich bleiben
-    const playerId = normalizedUsername + '_id'
 
     try {
       const response = await joinSession.mutateAsync({
@@ -144,9 +142,9 @@ export default function JoinGame({
 
       navigate(`/game/${session.id}`, {
         state: {
-          username: player.name,
           session: response.data,
-          characterId,
+          sessionId: session.id,
+          playerId: player.id,
         },
       })
 

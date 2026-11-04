@@ -31,6 +31,7 @@ public class MapService : IMapService
     {
         var maps = await _context.Maps
             .AsNoTracking()
+            .Where(map => !_context.SessionMaps.Any(copy => copy.Id == map.Id))
             .OrderByDescending(m => m.CreatedAt)
             .Select(m => new MapSummaryDto(
                 m.Id,

@@ -5,7 +5,7 @@ import {
   type CSSProperties,
   type DragEvent,
 } from 'react';
-import * as signalR from '@microsoft/signalr';
+import type { HubConnection } from '@microsoft/signalr';
 import {
   TransformWrapper,
   TransformComponent,
@@ -20,6 +20,7 @@ type ActiveMapProps = {
   sessionId: string;
   mapId: string;
   currentParticipant: ParticipantDto;
+  connection: HubConnection | null;
 };
 
 // Generates a stable hue from the token name so similar tokens share a distinct theme
@@ -45,6 +46,7 @@ export default function ActiveMap({
   sessionId,
   mapId,
   currentParticipant,
+  connection,
 }: ActiveMapProps) {
   // --- 1. STATE ---
   const [mapData, setMapData] = useState<MapDetailDto>();
@@ -63,7 +65,6 @@ export default function ActiveMap({
   );
 
   // References
-  const hubConnectionRef = useRef<signalR.HubConnection | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Derived loading state
@@ -126,16 +127,7 @@ export default function ActiveMap({
 
   // --- 3. SIGNALR REAL-TIME SYNC ---
   useEffect(() => {
-    if (!sessionId) return;
-
-    let isDisposed = false;
-
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl('/hubs/map', {
-        withCredentials: true,
-      })
-      .withAutomaticReconnect()
-      .build();
+    if (!connection) return;
 
     connection.on(
       'TokenMoved',
@@ -204,57 +196,22 @@ export default function ActiveMap({
       );
     });
 
-    // Delay start slightly or check isDisposed so React StrictMode's instant unmount doesn't abort negotiation
-    const startTimer = setTimeout(() => {
-      if (isDisposed) return;
-
-      connection
-        .start()
-        .then(async () => {
-          if (isDisposed) {
-            await connection.stop();
-            return;
-          }
-          hubConnectionRef.current = connection;
-          await connection.invoke(
-            'JoinSession',
-            sessionId,
-            currentParticipant.playerId,
-            currentParticipant.playerName,
-          );
-          console.log('✅ SignalR Connected & Joined Session:', sessionId);
-        })
-        .catch((err: unknown) => {
-          // Ignore AbortError caused by component unmount
-          if (isDisposed) return;
-          console.error('SignalR error:', err);
-        });
-    }, 50);
-
     return () => {
-      isDisposed = true;
-      clearTimeout(startTimer);
-
-      if (connection.state === signalR.HubConnectionState.Connected) {
-        connection
-          .invoke('LeaveSession', sessionId, currentParticipant.playerId)
-          .catch(() => { })
-          .finally(() => {
-            void connection.stop();
-          });
-      } else if (connection.state !== signalR.HubConnectionState.Disconnected) {
-        void connection.stop();
+      for (const event of [
+        'TokenMoved', 'TokenSpawned', 'TokenHpChanged', 'TokenRemoved',
+        'GridUpdated', 'SpellCasted', 'SpellDismissed',
+      ]) {
+        connection.off(event);
       }
-      hubConnectionRef.current = null;
     };
-  }, [sessionId, currentParticipant.playerId, currentParticipant.playerName]);
+  }, [connection]);
 
 
   // --- 4. TOKEN DRAG & DROP WITH GEOMETRIC PROJECTION ---
 
   const canMoveToken = (token: MapTokenDto) => {
     if (currentParticipant?.isDungeonMaster) return true;
-    if (token.isLocked) return false;
+    if (token.isLocked || !token.isVisibleToPlayers || !currentParticipant.selectedCharacterId) return false;
     return token.characterId === currentParticipant?.selectedCharacterId;
   };
 
@@ -329,6 +286,7 @@ export default function ActiveMap({
     // --- CASE A: Spawning a Monster from TokenBox ---
     const monsterSpawnData = event.dataTransfer.getData('application/vtt-spawn-monster');
     if (monsterSpawnData) {
+      if (!currentParticipant.isDungeonMaster) return;
       const monster = JSON.parse(monsterSpawnData) as {
         monsterIndex: string | number;
         name: string;
@@ -357,6 +315,7 @@ export default function ActiveMap({
     // --- CASE B: Placing a Character from TokenBox ---
     const characterPlaceData = event.dataTransfer.getData('application/vtt-place-character');
     if (characterPlaceData && sessionId) {
+      if (!currentParticipant.isDungeonMaster) return;
       const character = JSON.parse(characterPlaceData) as { characterId: string };
       try {
         const res = await postApiTokenMapMapIdPlaceCharacter(
@@ -381,6 +340,9 @@ export default function ActiveMap({
     // --- CASE C: Moving an Existing Board Token ---
     const tokenId = event.dataTransfer.getData('text/plain');
     if (tokenId) {
+      const token = tokens.find((candidate) => candidate.id === tokenId);
+      if (!token || !canMoveToken(token)) return;
+
       setTokens((prev) =>
         prev.map((token) =>
           token.id === tokenId
@@ -389,9 +351,9 @@ export default function ActiveMap({
         ),
       );
 
-      if (hubConnectionRef.current) {
+      if (connection) {
         try {
-          await hubConnectionRef.current.invoke(
+          await connection.invoke(
             'MoveToken',
             sessionId,
             tokenId,
@@ -643,7 +605,7 @@ export default function ActiveMap({
                   const hpColor = hpPercent > 30 ? '#2dc653' : '#d90429';
                   const ringWidth = Math.max(3, Math.round(size * 0.02)); // ring thickness in px
                   const hpAngle = hpPercent * 3.6; // 0-360deg
-                  
+
                    const stackIndex = tokens
                   .slice(0, index)
                   .filter((t) => t.gridX === token.gridX && t.gridY === token.gridY).length;
@@ -739,7 +701,7 @@ export default function ActiveMap({
                         style={{
                           position: 'relative',
                           zIndex: 3,
-                          marginTop: 'auto',       
+                          marginTop: 'auto',
                           width: '92%',
                           textAlign: 'center',
                           fontSize: `${Math.max(9, Math.min(12, size * 0.18))}px`,
