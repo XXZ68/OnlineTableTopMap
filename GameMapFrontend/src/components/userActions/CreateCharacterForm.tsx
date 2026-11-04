@@ -13,7 +13,7 @@ import type {
   CompendiumClassDto,
   CompendiumRaceDto,
 } from '../../model'
-import Dropdown from '../atoms/Drobdown'
+import Dropdown from '../atoms/Dropdown'
 
 type Props = {
   sessionId: string
