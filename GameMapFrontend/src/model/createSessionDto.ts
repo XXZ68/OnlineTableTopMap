@@ -9,10 +9,7 @@
 export interface CreateSessionDto {
   /** @nullable */
   sessionName?: string | null;
-  /** @nullable */
-  dungeonMasterId?: string | null;
-  /** @nullable */
-  dungeonMasterName?: string | null;
+  dungeonMasterId?: string;
   /** @nullable */
   initialMapId?: string | null;
 }

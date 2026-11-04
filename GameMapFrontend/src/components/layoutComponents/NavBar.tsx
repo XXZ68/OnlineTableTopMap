@@ -1,45 +1,37 @@
-import { useState } from 'react'
-import { useLocation } from 'react-router-dom'
-import Button from '../atoms/Button'
+import { Link, useLocation } from 'react-router-dom'
 import ThemeToggle from '../ThemeToggle'
-import CreateCampaign from '../userActions/CreateCampaign'
 
 export default function NavBar() {
-
-  const [createCampaign, setCreateCampaign] = useState(false)
-
   const { state } = useLocation()
-
-  const userId = state?.userId
   const username = state?.username
-  console.log(userId, username)
+
   return (
-    <nav className="flex items-center justify-between px-8 py-4 shadow-md">
-      {/* Logo */}
-      <a
-        href="/"
-        className="text-xl font-bold tracking-wide hover:text-gray-300 transition-colors"
-      >
-        Hi {username}
-      </a>
+    <nav className="border-b border-secondary-bg bg-primary-bg shadow-sm">
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-8">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-accent-special text-sm font-bold text-white">
+            GM
+          </span>
+          <span className="truncate text-base font-bold text-primary-text">
+            Game Map Tool
+          </span>
+        </div>
 
-      {/* Navigation Links */}
-      <ul className="flex items-center gap-6 m-0 p-0 list-none">     
-
-        <li>
-          <a
-            href="/"
-            className="text-gray-300 hover:text-white transition-colors text-sm"
+        <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+          {username && (
+            <span className="hidden max-w-48 truncate text-sm text-secondary-text sm:block">
+              Hi, {username}
+            </span>
+          )}
+        <ThemeToggle />
+          <Link
+            to="/"
+            className="rounded-md border border-secondary-bg px-3 py-2 text-sm font-medium text-secondary-text transition-colors hover:border-accent-special hover:text-accent-special"
           >
             Leave
-          </a>
-        </li>
-      </ul>
-
-      <div>
-        <ThemeToggle />
+          </Link>
+        </div>
       </div>
-
     </nav>
   )
 }

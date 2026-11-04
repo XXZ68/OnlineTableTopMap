@@ -162,7 +162,129 @@ export const usePostApiGameSession = <TError = unknown,
       > => {
       return useMutation(getPostApiGameSessionMutationOptions(options), queryClient);
     }
-    export type getApiGameSessionIdResponse200TextPlain = {
+    export type getApiGameSessionByDungeonMasterDungeonMasterIdResponse200TextPlain = {
+  data: GameSessionDto[]
+  status: 200
+}
+
+export type getApiGameSessionByDungeonMasterDungeonMasterIdResponse200ApplicationJson = {
+  data: GameSessionDto[]
+  status: 200
+}
+
+export type getApiGameSessionByDungeonMasterDungeonMasterIdResponse200TextJson = {
+  data: GameSessionDto[]
+  status: 200
+}
+
+export type getApiGameSessionByDungeonMasterDungeonMasterIdResponseSuccess = (getApiGameSessionByDungeonMasterDungeonMasterIdResponse200TextPlain | getApiGameSessionByDungeonMasterDungeonMasterIdResponse200ApplicationJson | getApiGameSessionByDungeonMasterDungeonMasterIdResponse200TextJson) & {
+  headers: Headers;
+};
+;
+
+export type getApiGameSessionByDungeonMasterDungeonMasterIdResponse = (getApiGameSessionByDungeonMasterDungeonMasterIdResponseSuccess)
+
+export const getGetApiGameSessionByDungeonMasterDungeonMasterIdUrl = (dungeonMasterId: string,) => {
+
+
+
+
+  return `/api/GameSession/by-dungeon-master/${dungeonMasterId}`
+}
+
+/**
+ * @summary Returns all game sessions belonging to a Gamemaster.
+ */
+export const getApiGameSessionByDungeonMasterDungeonMasterId = async (dungeonMasterId: string, options?: Parameters<typeof customInstance>[1]): Promise<getApiGameSessionByDungeonMasterDungeonMasterIdResponse> => {
+
+  return customInstance<getApiGameSessionByDungeonMasterDungeonMasterIdResponse>(getGetApiGameSessionByDungeonMasterDungeonMasterIdUrl(dungeonMasterId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetApiGameSessionByDungeonMasterDungeonMasterIdQueryKey = (dungeonMasterId: string,) => {
+    return [
+    `/api/GameSession/by-dungeon-master/${dungeonMasterId}`
+    ] as const;
+    }
+
+
+export const getGetApiGameSessionByDungeonMasterDungeonMasterIdQueryOptions = <TData = Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>, TError = unknown>(dungeonMasterId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiGameSessionByDungeonMasterDungeonMasterIdQueryKey(dungeonMasterId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>> = ({ signal }) => getApiGameSessionByDungeonMasterDungeonMasterId(dungeonMasterId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: dungeonMasterId !== null && dungeonMasterId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetApiGameSessionByDungeonMasterDungeonMasterIdQueryResult = NonNullable<Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>>
+export type GetApiGameSessionByDungeonMasterDungeonMasterIdQueryError = unknown
+
+
+export function useGetApiGameSessionByDungeonMasterDungeonMasterId<TData = Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>, TError = unknown>(
+ dungeonMasterId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>,
+          TError,
+          Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiGameSessionByDungeonMasterDungeonMasterId<TData = Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>, TError = unknown>(
+ dungeonMasterId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>,
+          TError,
+          Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiGameSessionByDungeonMasterDungeonMasterId<TData = Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>, TError = unknown>(
+ dungeonMasterId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Returns all game sessions belonging to a Gamemaster.
+ */
+
+export function useGetApiGameSessionByDungeonMasterDungeonMasterId<TData = Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>, TError = unknown>(
+ dungeonMasterId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiGameSessionByDungeonMasterDungeonMasterId>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetApiGameSessionByDungeonMasterDungeonMasterIdQueryOptions(dungeonMasterId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type getApiGameSessionIdResponse200TextPlain = {
   data: GameSessionDto
   status: 200
 }

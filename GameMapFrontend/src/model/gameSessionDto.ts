@@ -13,8 +13,7 @@ export interface GameSessionDto {
   sessionName?: string | null;
   /** @nullable */
   joinCode?: string | null;
-  /** @nullable */
-  dungeonMasterId?: string | null;
+  dungeonMasterId?: string;
   /** @nullable */
   activeMapId?: string | null;
   /** @nullable */

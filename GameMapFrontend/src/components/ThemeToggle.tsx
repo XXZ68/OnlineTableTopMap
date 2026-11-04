@@ -44,12 +44,13 @@ export default function ThemeToggle() {
     <button
       type="button"
       onClick={toggleTheme}
-      className="px-4 py-2 font-sans font-medium transition-colors duration-200 cursor-pointer text-primary-text bg-secondary-bg hover:bg-accent-special hover:text-white border border-transparent shadow-custom"
-      aria-label="Toggle dark mode"
+      className="inline-flex items-center rounded-md border border-secondary-bg px-3 py-2 text-sm font-medium text-primary-text transition-colors hover:border-accent-special hover:text-accent-special"
+      aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+      aria-pressed={theme === 'dark'}
     >
       {theme === 'light'
-        ? 'Please return to Dark mode'
-        : '🛑'}
+        ? 'Dark mode'
+        : 'Light mode'}
     </button>
   )
 }
