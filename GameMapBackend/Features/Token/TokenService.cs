@@ -16,19 +16,64 @@ public interface ITokenService
 public class TokenService : ITokenService
 {
     private readonly AppDbContext _context;
+    private readonly IWebHostEnvironment _env;
 
-    public TokenService(AppDbContext context)
+    public TokenService(
+        AppDbContext context,
+        IWebHostEnvironment env)
     {
         _context = context;
+        _env = env;
     }
+    private string? GetExistingImageUrl(string? imageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl))
+            return null;
+
+        // Keep external image URLs unchanged.
+        if (Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp ||
+                uri.Scheme == Uri.UriSchemeHttps))
+        {
+            return imageUrl;
+        }
+
+        var webRootPath = string.IsNullOrWhiteSpace(_env.WebRootPath)
+            ? Path.Combine(_env.ContentRootPath, "wwwroot")
+            : _env.WebRootPath;
+
+        var relativePath = imageUrl
+            .TrimStart('/', '\\')
+            .Replace('/', Path.DirectorySeparatorChar);
+
+        var rootPath = Path.GetFullPath(webRootPath);
+        var filePath = Path.GetFullPath(
+            Path.Combine(rootPath, relativePath));
+
+        // Ensure the path stays inside wwwroot.
+        var relativeToRoot = Path.GetRelativePath(rootPath, filePath);
+
+        if (relativeToRoot == ".." ||
+            relativeToRoot.StartsWith(
+                $"..{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal) ||
+            Path.IsPathRooted(relativeToRoot))
+        {
+            return null;
+        }
+
+        return File.Exists(filePath) ? $"/{relativePath.Replace('\\', '/')}" : null;
+    }
+
 
     public async Task<List<MapTokenDto>> GetTokensByMapAsync(Guid mapId, Guid sessionId)
     {
-        return await _context.MapTokens
-        .AsNoTracking()
+        var tokens = await _context.MapTokens
+            .AsNoTracking()
             .Where(t => t.MapId == mapId && t.GameSessionId == sessionId)
-            .Select(t => MapToDto(t))
             .ToListAsync();
+
+        return tokens.Select(MapToDto).ToList();
     }
 
 
@@ -134,14 +179,14 @@ public class TokenService : ITokenService
         return true;
     }
 
-    private static MapTokenDto MapToDto(MapTokenEntity t) => new(
+    private MapTokenDto MapToDto(MapTokenEntity t) => new(
         t.Id,
         t.MapId,
         t.CharacterId,
         t.GameSessionId,
         t.MonsterIndex,
         t.Name,
-        t.TokenImageUrl,
+        GetExistingImageUrl(t.TokenImageUrl),
         t.GridX,
         t.GridY,
         t.SizeInCells,
@@ -152,3 +197,5 @@ public class TokenService : ITokenService
         t.IsLocked
     );
 }
+
+
