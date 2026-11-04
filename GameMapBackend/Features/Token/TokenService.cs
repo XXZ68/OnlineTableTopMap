@@ -34,6 +34,9 @@ public class TokenService : ITokenService
 
     public async Task<MapTokenDto?> PlaceCharacterTokenAsync(Guid mapId, PlaceCharacterTokenDto dto)
     {
+        if (!await _context.SessionMaps.AnyAsync(map => map.Id == mapId && map.GameSessionId == dto.GameSessionId))
+            return null;
+
         var character = await _context.Characters.FindAsync(dto.CharacterId);
         if (character == null) return null;
 
@@ -59,6 +62,9 @@ public class TokenService : ITokenService
 
     public async Task<MapTokenDto?> SpawnMonsterTokenAsync(Guid mapId, SpawnMonsterTokenDto dto)
     {
+        if (!await _context.SessionMaps.AnyAsync(map => map.Id == mapId && map.GameSessionId == dto.GameSessionId))
+            return null;
+
         var monster = await _context.Monsters
             .AsNoTracking()
             .FirstOrDefaultAsync(m => m.Index == dto.MonsterIndex.ToLower());

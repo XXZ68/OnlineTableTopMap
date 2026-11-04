@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { SimpleSectionCard } from '../components/atoms/SimpleSectionCard'
 import NavBar from '../components/layoutComponents/NavBar'
 import Button from '../components/atoms/Button'
-import CreateCampaign from '../components/userActions/CreateCampaign'
 import CreateGame from '../components/userActions/CreateGame'
 import AddMap from '../components/userActions/addMap'
 
@@ -34,6 +33,8 @@ function Main() {
           Add Map
         </Button>
       </SimpleSectionCard>
+
+      {/* Liste von Games die Player gemacht haben */}
     </div>
 
     {createGame && <CreateGame onClose={() => setCreateGame(false)} isOpen={createGame} currentUser={userId ? { userId, username } : null} />}

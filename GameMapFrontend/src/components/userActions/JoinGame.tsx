@@ -19,16 +19,17 @@ export default function JoinGame({
   const [gameId, setGameId] = useState('')
   const [username, setUsername] = useState('')
   const [error, setError] = useState('')
+  const [playerId] = useState(() => `guest:${crypto.randomUUID()}`)
 
   const joinSession = usePostApiGameSessionJoin({
     mutation: {
-      onSuccess: (response) => {
+      onSuccess: (response, variables) => {
         const session = response.data
 
         onClose()
 
         navigate(`/game/${session.id}`, {
-          state: { username },
+          state: { session, sessionId: session.id, playerId: variables.data?.playerId },
         })
       },
       onError: () => {
@@ -57,7 +58,7 @@ export default function JoinGame({
       data: {
         joinCode: normalizedGameId,
         playerName: normalizedUsername,
-        playerId: normalizedUsername + "_id"
+        playerId,
       },
     })
   }

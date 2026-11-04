@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using GameMapBackend.Data;
 using GameMapBackend.Features.Map;
+using GameMapBackend.Features.Grid;
 
 namespace GameMapBackend.Features.GameSession;
 
@@ -40,9 +41,15 @@ public class GameSessionService : IGameSessionService
             SessionName = dto.SessionName,
             DungeonMasterId = dungeonMaster.Id,
             DungeonMaster = dungeonMaster,
-            JoinCode = GenerateJoinCode(),
-            ActiveMapId = dto.InitialMapId
+            JoinCode = GenerateJoinCode()
         };
+
+        if (dto.InitialMapId.HasValue)
+        {
+            var originalMap = await GetLibraryMapAsync(dto.InitialMapId.Value);
+            session.ActiveMap = CreatePlayableMap(session, originalMap);
+            session.ActiveMapId = session.ActiveMap.Id;
+        }
 
         session.Participants.Add(new SessionParticipantEntity
         {
@@ -132,33 +139,23 @@ public class GameSessionService : IGameSessionService
     public async Task<Guid> CopyMapToSessionAsync(Guid sessionId, Guid mapId)
     {
         var session = await _context.GameSessions.FindAsync(sessionId);
-        var originalMap = await _context.Maps
-            .Include(m => m.Grid)
-            .FirstOrDefaultAsync(m => m.Id == mapId);
-
         if (session == null)
             throw new KeyNotFoundException("Spiel-Sitzung nicht gefunden.");
-        
-        if (originalMap == null)
-            throw new KeyNotFoundException("Original-Map in der Bibliothek nicht gefunden.");
 
-        var sessionMap = new SessionMapEntity
+        var existing = await _context.SessionMaps
+            .FirstOrDefaultAsync(map => map.GameSessionId == sessionId
+                && (map.Id == mapId || map.OriginalMapId == mapId));
+
+        if (existing != null && await _context.Maps.AnyAsync(map => map.Id == existing.Id))
         {
-            GameSessionId = sessionId,
-            OriginalMapId = mapId,
-            Title = originalMap.Title,
-            ImageUrl = originalMap.ImageUrl,
-            GridJson = System.Text.Json.JsonSerializer.Serialize(originalMap.Grid),
-            TokensJson = "[]"
-        };
+            return existing.Id;
+        }
 
-        _context.SessionMaps.Add(sessionMap);
+        var originalMap = await GetLibraryMapAsync(mapId);
+        var playableMap = CreatePlayableMap(session, originalMap);
         await _context.SaveChangesAsync();
 
-        session.ActiveMapId = sessionMap.Id;
-        await _context.SaveChangesAsync();
-
-        return sessionMap.Id;
+        return playableMap.Id;
     }
 
     public async Task<bool> SwitchActiveMapAsync(Guid sessionId, Guid newMapId)
@@ -166,9 +163,73 @@ public class GameSessionService : IGameSessionService
         var session = await _context.GameSessions.FindAsync(sessionId);
         if (session == null) return false;
 
-        session.ActiveMapId = newMapId;
+        try
+        {
+            session.ActiveMapId = await CopyMapToSessionAsync(sessionId, newMapId);
+        }
+        catch (KeyNotFoundException)
+        {
+            return false;
+        }
+
         await _context.SaveChangesAsync();
         return true;
+    }
+
+    private async Task<MapEntity> GetLibraryMapAsync(Guid mapId)
+    {
+        var originalMap = await _context.Maps
+            .AsNoTracking()
+            .Include(map => map.Grid)
+            .FirstOrDefaultAsync(map => map.Id == mapId
+                && !_context.SessionMaps.Any(copy => copy.Id == map.Id));
+
+        return originalMap ?? throw new KeyNotFoundException("Original-Map in der Bibliothek nicht gefunden.");
+    }
+
+    private MapEntity CreatePlayableMap(GameSessionEntity session, MapEntity originalMap)
+    {
+        var map = new MapEntity
+        {
+            Title = originalMap.Title,
+            ImageUrl = originalMap.ImageUrl,
+            WidthInPixels = originalMap.WidthInPixels,
+            HeightInPixels = originalMap.HeightInPixels
+        };
+
+        if (originalMap.Grid is { } originalGrid)
+        {
+            map.Grid = new GridEntity
+            {
+                MapId = map.Id,
+                CellSizeInPixels = originalGrid.CellSizeInPixels,
+                Columns = originalGrid.Columns,
+                Rows = originalGrid.Rows,
+                LineColor = originalGrid.LineColor,
+                LineOpacity = originalGrid.LineOpacity,
+                OffsetX = originalGrid.OffsetX,
+                OffsetY = originalGrid.OffsetY
+            };
+        }
+
+        var gridSnapshot = map.Grid == null ? null : new GridDto(
+            map.Grid.Id, map.Id, map.Grid.CellSizeInPixels,
+            map.Grid.Columns, map.Grid.Rows, map.Grid.LineColor,
+            map.Grid.LineOpacity, map.Grid.OffsetX, map.Grid.OffsetY);
+
+        _context.SessionMaps.Add(new SessionMapEntity
+        {
+            Id = map.Id,
+            GameSession = session,
+            GameSessionId = session.Id,
+            OriginalMapId = originalMap.Id,
+            Title = map.Title,
+            ImageUrl = map.ImageUrl,
+            GridJson = System.Text.Json.JsonSerializer.Serialize(gridSnapshot),
+            TokensJson = "[]"
+        });
+        _context.Maps.Add(map);
+        return map;
     }
 
     private static string GenerateJoinCode()

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { HubConnectionBuilder, HubConnectionState, type HubConnection } from '@microsoft/signalr'
 import ActiveMap from '../components/ActiveMap'
-import { getApiMap, getApiGameSessionId } from '../api'
+import { getApiMap, getApiMapId, getApiGameSessionId, patchApiGameSessionIdActiveMap } from '../api'
 import type { GameSessionDto, MapSummaryDto, ParticipantDto } from '../model'
 import GameNavBar from '../components/gameComponents/GameNavBar'
 import GameEventLog from '../components/gameComponents/GameEventLog'
@@ -13,16 +14,19 @@ export default function Game() {
   const lobbyState = state as {
     session?: GameSessionDto
     sessionId?: string
+    playerId?: string
     currentUser?: { userId: string; username: string }
   } | null
   const sessionId = routeSessionId ?? lobbyState?.sessionId ?? ''
   const [session, setSession] = useState<GameSessionDto | null>(null)
   const [maps, setMaps] = useState<MapSummaryDto[]>([])
   const [selectedMapId, setSelectedMapId] = useState('')
-  const [isDungeonMaster, setIsDungeonMaster] = useState(true)
   const [logs, setLogs] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
+  const [actionError, setActionError] = useState('')
+  const [isChangingMap, setIsChangingMap] = useState(false)
+  const [connection, setConnection] = useState<HubConnection | null>(null)
 
   const addLog = (message: string) => {
     setLogs((prev) => [
@@ -87,26 +91,134 @@ export default function Game() {
       }
     }
 
-    loadMaps()
+    void loadMaps()
 
     return () => {
       controller.abort()
     }
   }, [sessionId])
 
-  const currentParticipant: ParticipantDto = session?.participants?.find(
-    (participant) => participant.playerId === (
-      lobbyState?.currentUser?.userId ?? session.dungeonMasterId
-    ),
-  ) ?? {
-    playerId: isDungeonMaster
-      ? 'dm-test-id-001'
-      : 'player-test-id-002',
-    playerName: isDungeonMaster
-      ? 'Dungeon Master'
-      : 'Player One',
-    isDungeonMaster,
-    selectedCharacterId: null,
+  useEffect(() => {
+    if (!selectedMapId || maps.some((map) => map.id === selectedMapId)) return
+
+    const controller = new AbortController()
+    const loadSessionMap = async () => {
+      try {
+        const response = await getApiMapId(selectedMapId, { signal: controller.signal })
+        if (controller.signal.aborted) return
+
+        const map = response.data
+        setMaps((current) => current.some((existing) => existing.id === map.id)
+          ? current
+          : [...current, { ...map, title: `${map.title ?? 'Map'} (Session)` }])
+      } catch (error: unknown) {
+        if (!controller.signal.aborted) {
+          setActionError(error instanceof Error ? error.message : 'Failed to load the session map.')
+        }
+      }
+    }
+
+    void loadSessionMap()
+    return () => controller.abort()
+  }, [selectedMapId, maps])
+
+  const playerId = lobbyState?.playerId ?? lobbyState?.currentUser?.userId
+  const participant = session?.participants?.find(
+    (member) => member.playerId === playerId,
+  )
+  const isDungeonMaster = participant?.isDungeonMaster === true
+    && lobbyState?.currentUser?.userId === session?.dungeonMasterId
+    && participant.playerId === session?.dungeonMasterId
+  const currentParticipant: ParticipantDto | null = participant
+    ? { ...participant, isDungeonMaster }
+    : null
+
+  const participantId = currentParticipant?.playerId
+  const participantName = currentParticipant?.playerName
+
+  useEffect(() => {
+    if (!sessionId || !participantId || !participantName) return
+
+    let disposed = false
+    let mapRevision = 0
+    const controller = new AbortController()
+    const hub = new HubConnectionBuilder()
+      .withUrl('/hubs/map', { withCredentials: true })
+      .withAutomaticReconnect()
+      .build()
+
+    setConnection(hub)
+
+    hub.on('MapChanged', (mapId: string) => {
+      mapRevision += 1
+      setSelectedMapId(mapId)
+      setSession((current) => current ? { ...current, activeMapId: mapId } : current)
+      addLog(`Switched map to ID: ${mapId}`)
+    })
+
+    const joinSession = async () => {
+      await hub.invoke('JoinSession', sessionId, participantId, participantName)
+      const revision = mapRevision
+      const response = await getApiGameSessionId(sessionId, { signal: controller.signal })
+      if (!disposed && revision === mapRevision) {
+        setSelectedMapId(response.data.activeMapId ?? '')
+        setSession(response.data)
+        setActionError('')
+      }
+    }
+
+    hub.onreconnected(async () => {
+      try {
+        await joinSession()
+      } catch (error: unknown) {
+        if (!disposed) setActionError(error instanceof Error ? error.message : 'Failed to rejoin the game.')
+      }
+    })
+
+    const startTimer = setTimeout(() => {
+      void hub.start().then(async () => {
+        if (disposed) {
+          await hub.stop()
+          return
+        }
+        await joinSession()
+      }).catch((error: unknown) => {
+        if (!disposed) setActionError(error instanceof Error ? error.message : 'Failed to connect to the game.')
+      })
+    }, 50)
+
+    return () => {
+      disposed = true
+      clearTimeout(startTimer)
+      controller.abort()
+      const leaveSession = async () => {
+        try {
+          if (hub.state === HubConnectionState.Connected) {
+            await hub.invoke('LeaveSession', sessionId, participantId)
+          }
+        } finally {
+          await hub.stop()
+        }
+      }
+      void leaveSession().catch(console.error)
+    }
+  }, [sessionId, participantId, participantName])
+
+  const handleMapChange = async (mapId: string) => {
+    if (!isDungeonMaster || !sessionId || !mapId || isChangingMap) return
+
+    setIsChangingMap(true)
+    setActionError('')
+    try {
+      await patchApiGameSessionIdActiveMap(sessionId, { newMapId: mapId })
+      const response = await getApiGameSessionId(sessionId)
+      setSession(response.data)
+      setSelectedMapId(response.data.activeMapId ?? '')
+    } catch (error: unknown) {
+      setActionError(error instanceof Error ? error.message : 'Failed to change the map.')
+    } finally {
+      setIsChangingMap(false)
+    }
   }
 
   if (loading) {
@@ -132,32 +244,39 @@ export default function Game() {
     )
   }
 
+  if (!currentParticipant) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <p role="alert">Join this game with its room code or sign in as its Dungeon Master.</p>
+      </main>
+    )
+  }
+
   return (
     <main className="relative h-dvh w-screen overflow-hidden bg-[#090a0f]">
       <GameNavBar
         maps={maps}
         selectedMapId={selectedMapId}
         isDungeonMaster={isDungeonMaster}
+        isChangingMap={isChangingMap}
         sessionId={sessionId}
+        joinCode={session?.joinCode ?? ''}
         onMapChange={(mapId) => {
-          setSelectedMapId(mapId)
-          addLog(`Switched map to ID: ${mapId}`)
+          void handleMapChange(mapId)
         }}
-        onToggleRole={() => {
-          setIsDungeonMaster((prev) => !prev)
-          addLog(
-            `Role changed to: ${
-              !isDungeonMaster ? 'Dungeon Master' : 'Player'
-            }`,
-          )
-        }}
-        onCreateSession={async () => {
-          navigate('/main', { state: lobbyState?.currentUser })
+        onCreateSession={() => {
+          void navigate('/main', { state: lobbyState?.currentUser })
         }}
         onLeaveSession={() => {
-          navigate('/main', { state: lobbyState?.currentUser })
+          void navigate(lobbyState?.currentUser ? '/main' : '/', { state: lobbyState?.currentUser })
         }}
       />
+
+      {actionError && (
+        <p role="alert" className="absolute top-24 left-4 right-4 z-[110] rounded border border-red-500 bg-red-950 p-3 text-sm text-white">
+          {actionError}
+        </p>
+      )}
 
       {/* --- ACTIVE BATTLE MAP --- */}
       {selectedMapId ? (
@@ -166,6 +285,7 @@ export default function Game() {
           mapId={selectedMapId}
           sessionId={sessionId}
           currentParticipant={currentParticipant}
+          connection={connection}
         />
       ) : (
         <div className="absolute inset-0 flex flex-col items-center justify-center overflow-y-auto bg-[radial-gradient(ellipse_at_center,_rgba(33,47,55,0.72)_0%,_#090a0f_68%)] px-6 pb-24 pt-28 text-center text-[#f8fafc]">
