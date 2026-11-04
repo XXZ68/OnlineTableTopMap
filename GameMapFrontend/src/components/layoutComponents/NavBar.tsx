@@ -27,12 +27,6 @@ export default function NavBar() {
       <ul className="flex items-center gap-6 m-0 p-0 list-none">     
 
         <li>
-          <Button variant='primary' onClick={() => setCreateCampaign(true)}>
-            Create Campaign
-          </Button>
-        </li>
-
-        <li>
           <a
             href="/"
             className="text-gray-300 hover:text-white transition-colors text-sm"
@@ -46,7 +40,6 @@ export default function NavBar() {
         <ThemeToggle />
       </div>
 
-      {createCampaign && (<CreateCampaign onClose={() => setCreateCampaign(false)} isOpen={createCampaign} />)}
     </nav>
   )
 }

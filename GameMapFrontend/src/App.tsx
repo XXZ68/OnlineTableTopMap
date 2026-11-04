@@ -14,6 +14,7 @@ function App() {
 
         <Route path="/418" element={<div>Im a teapot</div>} />
         <Route path="/game" element={<Game />} />
+        <Route path="/game/:sessionId" element={<Game />} />
         
       </Routes>
     </Router>
