@@ -1,17 +1,28 @@
 import { useEffect, useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import ActiveMap from '../components/ActiveMap'
-import { getApiMap, postApiGameSession } from '../api'
-import { MapSummaryDto, ParticipantDto } from '../model'
+import { getApiMap, getApiGameSessionId } from '../api'
+import type { GameSessionDto, MapSummaryDto, ParticipantDto } from '../model'
 import GameNavBar from '../components/gameComponents/GameNavBar'
 import GameEventLog from '../components/gameComponents/GameEventLog'
 
-export default function BattleMapTestPage() {
+export default function Game() {
+  const { sessionId: routeSessionId } = useParams()
+  const { state } = useLocation()
+  const navigate = useNavigate()
+  const lobbyState = state as {
+    session?: GameSessionDto
+    sessionId?: string
+    currentUser?: { userId: string; username: string }
+  } | null
+  const sessionId = routeSessionId ?? lobbyState?.sessionId ?? ''
+  const [session, setSession] = useState<GameSessionDto | null>(null)
   const [maps, setMaps] = useState<MapSummaryDto[]>([])
   const [selectedMapId, setSelectedMapId] = useState('')
-  const [sessionId, setSessionId] = useState('')
   const [isDungeonMaster, setIsDungeonMaster] = useState(true)
   const [logs, setLogs] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState('')
 
   const addLog = (message: string) => {
     setLogs((prev) => [
@@ -23,20 +34,30 @@ export default function BattleMapTestPage() {
   // 1. Fetch available maps from backend on mount
   useEffect(() => {
     const controller = new AbortController()
+    setLoading(true)
+    setErrorMessage('')
 
     async function loadMaps() {
       try {
-        const res = await getApiMap({
-          signal: controller.signal,
-        })
+        const [res, sessionResponse] = await Promise.all([
+          getApiMap({ signal: controller.signal }),
+          sessionId
+            ? getApiGameSessionId(sessionId, { signal: controller.signal })
+            : Promise.resolve(null),
+        ])
 
         const data: MapSummaryDto[] = res.data
 
         if (controller.signal.aborted) return
 
         setMaps(data)
+        const loadedSession = sessionResponse?.data ?? null
+        setSession(loadedSession)
 
-        if (data.length > 0 && data[0].id) {
+        if (loadedSession) {
+          setSelectedMapId(loadedSession.activeMapId ?? '')
+          addLog(`Joined "${loadedSession.sessionName}". Room code: ${loadedSession.joinCode}`)
+        } else if (data.length > 0 && data[0].id) {
           setSelectedMapId(data[0].id)
 
           addLog(
@@ -53,8 +74,10 @@ export default function BattleMapTestPage() {
         if (controller.signal.aborted) return
 
         if (err instanceof Error) {
+          setErrorMessage(err.message)
           addLog(`Failed to fetch maps: ${err.message}`)
         } else {
+          setErrorMessage('Failed to load the game session.')
           addLog('Failed to fetch maps.')
         }
       } finally {
@@ -69,40 +92,13 @@ export default function BattleMapTestPage() {
     return () => {
       controller.abort()
     }
-  }, [])
-  // 2. Quick session generator to test real-time multiplayer features
-  const handleCreateTestSession = async () => {
-    try {
-      const res = await postApiGameSession({
-        sessionName: `Test Session ${Math.floor(
-          Math.random() * 1000,
-        )}`,
-        dungeonMasterId: 'dm-test-id-001',
-        dungeonMasterName: 'Dungeon Master',
-        initialMapId: selectedMapId || null,
-      })
+  }, [sessionId])
 
-      const newSession = res.data
-      if (newSession && newSession.id) {
-        setSessionId(newSession.id)
-      }
-
-      addLog(
-        `Session created! Code: ${
-          newSession.joinCode || 'N/A'
-        } (ID: ${newSession.id})`,
-      )
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        addLog(`Session creation error: ${err.message}`)
-      } else {
-        addLog('Session creation error.')
-      }
-    }
-  }
-
-  // Mock Current User object matching ActiveMap's expectations
-  const currentParticipant: ParticipantDto = {
+  const currentParticipant: ParticipantDto = session?.participants?.find(
+    (participant) => participant.playerId === (
+      lobbyState?.currentUser?.userId ?? session.dungeonMasterId
+    ),
+  ) ?? {
     playerId: isDungeonMaster
       ? 'dm-test-id-001'
       : 'player-test-id-002',
@@ -128,6 +124,14 @@ export default function BattleMapTestPage() {
     )
   }
 
+  if (errorMessage) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <p role="alert">Failed to load game: {errorMessage}</p>
+      </main>
+    )
+  }
+
   return (
     <main className="relative h-dvh w-screen overflow-hidden bg-[#090a0f]">
       <GameNavBar
@@ -147,10 +151,11 @@ export default function BattleMapTestPage() {
             }`,
           )
         }}
-        onCreateSession={handleCreateTestSession}
+        onCreateSession={async () => {
+          navigate('/main', { state: lobbyState?.currentUser })
+        }}
         onLeaveSession={() => {
-          setSessionId('')
-          addLog('Cleared session. Operating in standalone mode.')
+          navigate('/main', { state: lobbyState?.currentUser })
         }}
       />
 
@@ -171,7 +176,7 @@ export default function BattleMapTestPage() {
             Map library
           </p>
           <h1 className="mb-3 text-3xl font-semibold text-[#f8fafc] sm:text-4xl">
-            No battle maps yet
+            {session ? 'No map selected' : 'No battle maps yet'}
           </h1>
           <p className="max-w-[440px] text-sm leading-6 text-[#aebdca]">
             Add a map image through <code className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[#e3c18f]">POST /api/Map</code> or open the backend tools to upload one.

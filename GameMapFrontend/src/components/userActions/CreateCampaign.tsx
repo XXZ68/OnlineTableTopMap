@@ -5,7 +5,7 @@ import {
 import Modal from '../atoms/Modal'
 import TextInput from '../atoms/TextInput'
 import Button from '../atoms/Button'
-import { useGetApiMap } from '../../api'
+import { postApiGameSessionSessionIdAddMapMapId, useGetApiMap } from '../../api'
 import { MapSummaryDto } from '../../model'
 
 type GameSession = {
@@ -138,11 +138,13 @@ export default function CreateCampaign({
         )
 
         for (const auxMap of auxiliaryMaps) {
-          await fetch(
-            `/api/GameSession/${gameSession.id}/add-map/${auxMap.id}`,
-            {
-              method: 'POST',
-            },
+          if (!auxMap.id) {
+            throw new Error('Selected map has no ID.')
+          }
+
+          await postApiGameSessionSessionIdAddMapMapId(
+            gameSession.id,
+            auxMap.id,
           )
         }
 
