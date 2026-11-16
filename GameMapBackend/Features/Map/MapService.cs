@@ -3,8 +3,7 @@ using GameMapBackend.Data;
 using GameMapBackend.Features.Grid;
 using GameMapBackend.Features.Spell;
 using GameMapBackend.Features.Token;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 namespace GameMapBackend.Features.Map;
 
@@ -143,7 +142,7 @@ public class MapService : IMapService
         );
     }
 
-        public async Task<MapDetailDto> CreateMapAsync(CreateMapDto dto, IFormFile imageFile)
+    public async Task<MapDetailDto> CreateMapAsync(CreateMapDto dto, IFormFile imageFile)
     {
         const int max8KWidth = 7680;
         const int max8KHeight = 4320;
@@ -157,24 +156,52 @@ public class MapService : IMapService
 
         int actualWidth;
         int actualHeight;
+        SKEncodedImageFormat encodedFormat;
 
-        await using (var inputStream = imageFile.OpenReadStream())
-        using (var image = await Image.LoadAsync(inputStream))
+        // 1. Read dimensions & format from header without decoding full bitmap into RAM
+        await using (var headerStream = imageFile.OpenReadStream())
         {
-            // Only scale down if the image exceeds 8K (7680x4320), preserving aspect ratio
-            if (image.Width > max8KWidth || image.Height > max8KHeight)
-            {
-                image.Mutate(ctx => ctx.Resize(new ResizeOptions
-                {
-                    Size = new Size(max8KWidth, max8KHeight),
-                    Mode = ResizeMode.Max // Scales down proportionally without cropping or bars
-                }));
-            }
+            using var codec = SKCodec.Create(headerStream)
+                ?? throw new InvalidOperationException("Ungültiges Bildformat.");
 
-            actualWidth = image.Width;
-            actualHeight = image.Height;
+            actualWidth = codec.Info.Width;
+            actualHeight = codec.Info.Height;
+            encodedFormat = codec.EncodedFormat;
+        }
 
-            await image.SaveAsync(filePath);
+        // 2. Only decode & scale down if image exceeds 8K (7680x4320)
+        if (actualWidth > max8KWidth || actualHeight > max8KHeight)
+        {
+            double scale = Math.Min(
+                (double)max8KWidth / actualWidth,
+                (double)max8KHeight / actualHeight
+            );
+
+            actualWidth = Math.Max(1, (int)Math.Round(actualWidth * scale));
+            actualHeight = Math.Max(1, (int)Math.Round(actualHeight * scale));
+
+            await using var decodeStream = imageFile.OpenReadStream();
+            using var originalBitmap = SKBitmap.Decode(decodeStream)
+                ?? throw new InvalidOperationException("Bild konnte nicht dekodiert werden.");
+
+            var targetInfo = new SKImageInfo(actualWidth, actualHeight);
+            using var resizedBitmap = originalBitmap.Resize(
+                targetInfo,
+                new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear)
+            );
+
+            using var skImage = SKImage.FromBitmap(resizedBitmap);
+            using var encodedData = skImage.Encode(encodedFormat, 90);
+
+            await using var outputStream = new FileStream(filePath, FileMode.Create);
+            encodedData.SaveTo(outputStream);
+        }
+        else
+        {
+            // Already within 8K: stream directly to disk for fast, lossless saving
+            await using var copyStream = imageFile.OpenReadStream();
+            await using var outputStream = new FileStream(filePath, FileMode.Create);
+            await copyStream.CopyToAsync(outputStream);
         }
 
         int cellSize = dto.InitialCellSize > 0 ? dto.InitialCellSize : 70;
@@ -208,12 +235,11 @@ public class MapService : IMapService
         return (await GetMapByIdAsync(map.Id))!;
     }
 
-
-
     public async Task<bool> DeleteMapAsync(Guid id)
     {
         var map = await _context.Maps.FindAsync(id);
         if (map == null) return false;
+
         var filePath = Path.Combine(
             _env.WebRootPath,
             map.ImageUrl.TrimStart('/')

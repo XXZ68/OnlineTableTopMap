@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
+using SkiaSharp;
 
 namespace GameMapBackend.Features.Map;
 
@@ -39,55 +38,53 @@ public class MapController : ControllerBase
     /// <summary>
     /// Uploads a new battlemap image file and generates its default grid configuration.
     /// </summary>
-    /// <param name="dto">The map creation data (title and initial cell size).</param>
-    /// initial cell size >= 0
-    /// <param name="image">The image file upload (PNG/JPG/WebP).</param>
-    /// image would theoretically also be accepted as TIFF because image sharp accepts this as valid
-    /// Could fix this by reading metadata
     [HttpPost]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<MapDetailDto>> Create([FromForm] CreateMapDto dto, IFormFile image)
-    {   
-        var allowedExtensions = new[] { ".jpg", ".png", ".webp", ".jpeg", };
+    {
+        var allowedExtensions = new[] { ".jpg", ".png", ".webp", ".jpeg" };
 
         if (image == null || image.Length == 0)
-            {
-                return BadRequest("Bitte lade eine Bilddatei für die Battlemap hoch.");
-            }
+        {
+            return BadRequest("Please upload an image for the map.");
+        }
+
         if (image.Length > 20 * 1024 * 1024) // 20MB
-            {
-                return BadRequest("Datei ist zu groß. Bitte lade eine Datei hoch die nicht größer als 20MB ist.");
-            }
+        {
+            return BadRequest("File size exceeds limit. MAX: 20MB");
+        }
 
         string fileExtension = Path.GetExtension(image.FileName).ToLowerInvariant();
-
         if (!allowedExtensions.Contains(fileExtension))
-            {
-                return BadRequest("Bitte lade einen gültigen Dateityp (.jpg, .jpeg, .png, .webp, ) für die Battlemap hoch.");
-            }
-        
+        {
+            return BadRequest("Not supported image format. Pleas use JPG, JPEG, PNG or WebP.");
+        }
+
         if (dto.InitialCellSize <= 0)
         {
-            return BadRequest("Die Zellengröße muss größer als 0 sein.");
+            return BadRequest("Cell size must be bigger than 0.");
         }
 
-        try
+        await using (var stream = image.OpenReadStream())
         {
-            await using var stream = image.OpenReadStream();
-            var imageInfo = await Image.IdentifyAsync(stream);
+            using var codec = SKCodec.Create(stream);
+            if (codec is null)
+            {
+                return BadRequest("Invalid or corrupted image.");
+            }
 
-            if (imageInfo is null)
-                return BadRequest("Ungültiges Bild.");
-        }
-        catch (UnknownImageFormatException)
-        {
-            return BadRequest("Nicht unterstütztes Bildformat.");
-        }
-        catch (InvalidImageContentException)
-        {
-            return BadRequest("Beschädigtes Bild.");
-        }
+            var allowedFormats = new[]
+            {
+                SKEncodedImageFormat.Jpeg,
+                SKEncodedImageFormat.Png,
+                SKEncodedImageFormat.Webp
+            };
 
+            if (!allowedFormats.Contains(codec.EncodedFormat))
+            {
+                return BadRequest("Not supported image format. Pleas use JPG, JPEG, PNG or WebP.");
+            }
+        }
 
         var created = await _mapService.CreateMapAsync(dto, image);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
