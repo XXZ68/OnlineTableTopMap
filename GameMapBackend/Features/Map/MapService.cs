@@ -143,7 +143,7 @@ public class MapService : IMapService
         );
     }
 
-        public async Task<MapDetailDto> CreateMapAsync(CreateMapDto dto, IFormFile imageFile)
+    public async Task<MapDetailDto> CreateMapAsync(CreateMapDto dto, IFormFile imageFile)
     {
         const int targetWidth = 1920;
         const int targetHeight = 1080;
@@ -209,7 +209,10 @@ public class MapService : IMapService
             _env.WebRootPath,
             map.ImageUrl.TrimStart('/')
         );
-        if (!File.Exists(filePath)) return false;
+        if (File.Exists(filePath))
+        {
+            File.Delete(filePath);
+        }
 
         _context.Maps.Remove(map);
         await _context.SaveChangesAsync();
