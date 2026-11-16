@@ -1,89 +1,78 @@
+import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 
-import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
-
-import TextInput from '../atoms/TextInput'
-import Modal from '../atoms/Modal'
-import Button from '../atoms/Button'
+import TextInput from "../atoms/TextInput";
+import Modal from "../atoms/Modal";
+import Button from "../atoms/Button";
 
 import {
   usePostApiGameSessionJoin,
   useGetApiCharacterSessionSessionId,
-} from '../../api'
+} from "../../api";
 
-import type { CharacterDto } from '../../model'
-import CreateCharacterForm from './CreateCharacterForm'
+import type { CharacterDto } from "../../model";
+import CreateCharacterForm from "./CreateCharacterForm";
 
 type JoinGameProps = {
-  isOpen: boolean
-  onClose: () => void
-}
+  isOpen: boolean;
+  onClose: () => void;
+};
 
-export default function JoinGame({
-  isOpen,
-  onClose,
-}: JoinGameProps) {
-  const navigate = useNavigate()
+export default function JoinGame({ isOpen, onClose }: JoinGameProps) {
+  const navigate = useNavigate();
 
-  const joinSession = usePostApiGameSessionJoin()
+  const joinSession = usePostApiGameSessionJoin();
 
-  type Session = Awaited<
-    ReturnType<typeof joinSession.mutateAsync>
-  >['data']
+  type Session = Awaited<ReturnType<typeof joinSession.mutateAsync>>["data"];
 
   // Join-Formular
-  const [gameId, setGameId] = useState('')
-  const [username, setUsername] = useState('')
-  const [error, setError] = useState('')
-  const [playerId] = useState(() => `guest:${crypto.randomUUID()}`)
+  const [gameId, setGameId] = useState("");
+  const [username, setUsername] = useState("");
+  const [error, setError] = useState("");
+  const [playerId] = useState(() => `guest:${crypto.randomUUID()}`);
 
   // Session und Spieler
-  const [session, setSession] = useState<Session | null>(null)
+  const [session, setSession] = useState<Session | null>(null);
   const [player, setPlayer] = useState<{
-    id: string
-    name: string
-  } | null>(null)
+    id: string;
+    name: string;
+  } | null>(null);
 
-  const [joinedCode, setJoinedCode] = useState('')
+  const [joinedCode, setJoinedCode] = useState("");
 
   // Charakter-Auswahl
-  const [showCharacterDialog, setShowCharacterDialog] =
-    useState(false)
+  const [showCharacterDialog, setShowCharacterDialog] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
 
-  const [selectingCharacter, setSelectingCharacter] =
-    useState(false)
+  const [selectingCharacter, setSelectingCharacter] = useState(false);
 
-  const [characterError, setCharacterError] = useState('')
+  const [characterError, setCharacterError] = useState("");
+  const [selectedCharacterId, setSelectedCharacterId] = useState("");
+  const [characterPassword, setCharacterPassword] = useState("");
 
   // Session-ID für den GET-Request
-  const sessionId = session?.id ?? ''
+  const sessionId = session?.id ?? "";
 
   // Charaktere automatisch laden, sobald eine Session vorhanden ist
-  const charactersQuery = useGetApiCharacterSessionSessionId(
-    sessionId,
-    {
-      query: {
-        enabled: !!sessionId,
-      },
+  const charactersQuery = useGetApiCharacterSessionSessionId(sessionId, {
+    query: {
+      enabled: !!sessionId,
     },
-  )
+  });
 
-  const characters: CharacterDto[] =
-    charactersQuery.data?.data ?? []
+  const characters: CharacterDto[] = charactersQuery.data?.data ?? [];
 
   // GameSession beitreten
-  const handleJoinGame = async (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault()
-    setError('')
+  const handleJoinGame = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
 
-    const normalizedGameId = gameId.trim().toUpperCase()
-    const normalizedUsername = username.trim()
+    const normalizedGameId = gameId.trim().toUpperCase();
+    const normalizedUsername = username.trim();
 
     if (!normalizedGameId || !normalizedUsername) {
-      setError('Bitte Game-Code und Username eingeben.')
-      return
+      setError("Bitte Game-Code und Username eingeben.");
+      return;
     }
 
     try {
@@ -93,39 +82,38 @@ export default function JoinGame({
           playerName: normalizedUsername,
           playerId,
         },
-      })
+      });
 
-      const joinedSession = response.data
+      const joinedSession = response.data;
 
-      setSession(joinedSession)
-      setJoinedCode(normalizedGameId)
+      setSession(joinedSession);
+      setJoinedCode(normalizedGameId);
 
       setPlayer({
         id: playerId,
         name: normalizedUsername,
-      })
+      });
 
       // Join-Dialog schließen
-      onClose()
+      onClose();
 
       // Charakter-Auswahl öffnen
-      setShowCharacterDialog(true)
-
+      setShowCharacterDialog(true);
     } catch {
       setError(
-        'Session konnte nicht beigetreten werden. Bitte überprüfe den Game-Code.',
-      )
+        "Session konnte nicht beigetreten werden. Bitte überprüfe den Game-Code.",
+      );
     }
-  }
+  };
 
   // Charakter auswählen
-  const handleSelectCharacter = async (
-    characterId: string,
-  ) => {
-    if (!session?.id || !player) return
+  const handleSelectCharacter = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const characterId = selectedCharacterId;
+    if (!session?.id || !player) return;
 
-    setSelectingCharacter(true)
-    setCharacterError('')
+    setSelectingCharacter(true);
+    setCharacterError("");
 
     try {
       // Bestehenden SessionParticipant aktualisieren
@@ -135,10 +123,14 @@ export default function JoinGame({
           playerId: player.id,
           playerName: player.name,
           characterId,
+          characterPassword,
         },
-      })
+      });
 
-      setShowCharacterDialog(false)
+      setShowCharacterDialog(false);
+      setShowPasswordDialog(false);
+      setSelectedCharacterId("");
+      setCharacterPassword("");
 
       navigate(`/game/${session.id}`, {
         state: {
@@ -146,34 +138,25 @@ export default function JoinGame({
           sessionId: session.id,
           playerId: player.id,
         },
-      })
-
+      });
     } catch {
       setCharacterError(
-        'Charakter konnte nicht ausgewählt werden.',
-      )
+        "Passwort falsch oder Charakter kann nicht ausgewählt werden.",
+      );
     } finally {
-      setSelectingCharacter(false)
+      setSelectingCharacter(false);
     }
-  }
+  };
 
   return (
     <>
       {/* Join Game Dialog */}
       <Modal isOpen={isOpen} onClose={onClose}>
-        <h2 className="mb-4 text-xl font-bold">
-          Join Game
-        </h2>
+        <h2 className="mb-4 text-xl font-bold">Join Game</h2>
 
-        <form
-          onSubmit={handleJoinGame}
-          className="space-y-4"
-        >
+        <form onSubmit={handleJoinGame} className="space-y-4">
           <div>
-            <label
-              htmlFor="gameId"
-              className="block text-sm font-medium mb-1"
-            >
+            <label htmlFor="gameId" className="block text-sm font-medium mb-1">
               Game-Code
             </label>
 
@@ -183,9 +166,7 @@ export default function JoinGame({
               className="mt-1 block w-full rounded-md shadow-sm p-2"
               placeholder="z. B. A1B2C3"
               value={gameId}
-              onChange={(event) =>
-                setGameId(event.target.value)
-              }
+              onChange={(event) => setGameId(event.target.value)}
               required
               maxLength={6}
             />
@@ -205,9 +186,7 @@ export default function JoinGame({
               className="mt-1 block w-full rounded-md shadow-sm p-2"
               placeholder="Wie möchtest du heißen?"
               value={username}
-              onChange={(event) =>
-                setUsername(event.target.value)
-              }
+              onChange={(event) => setUsername(event.target.value)}
               required
               maxLength={24}
             />
@@ -225,16 +204,10 @@ export default function JoinGame({
               type="submit"
               disabled={joinSession.isPending}
             >
-              {joinSession.isPending
-                ? 'Beitreten...'
-                : 'Join Lobby'}
+              {joinSession.isPending ? "Beitreten..." : "Join Lobby"}
             </Button>
 
-            <Button
-              variant="danger"
-              type="button"
-              onClick={onClose}
-            >
+            <Button variant="danger" type="button" onClick={onClose}>
               Cancel
             </Button>
           </div>
@@ -247,20 +220,13 @@ export default function JoinGame({
         onClose={() => setShowCharacterDialog(false)}
       >
         <div className="w-full max-w-2xl space-y-6">
-
-          <h2 className="text-xl font-bold">
-            Wähle deinen Charakter
-          </h2>
+          <h2 className="text-xl font-bold">Wähle deinen Charakter</h2>
 
           {/* Vorhandene Charaktere */}
           <div>
-            <h3 className="font-semibold mb-3">
-              Vorhandene Charaktere
-            </h3>
+            <h3 className="font-semibold mb-3">Vorhandene Charaktere</h3>
 
-            {charactersQuery.isLoading && (
-              <p>Charaktere werden geladen...</p>
-            )}
+            {charactersQuery.isLoading && <p>Charaktere werden geladen...</p>}
 
             {charactersQuery.isError && (
               <div className="space-y-2">
@@ -288,31 +254,35 @@ export default function JoinGame({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {characters.map((character) => {
-                const characterId = character.id
+                const characterId = character.id;
 
-                if (!characterId) return null
+                if (!characterId) return null;
 
                 return (
                   <button
                     key={characterId}
                     type="button"
                     disabled={selectingCharacter}
-                    onClick={() =>
-                      handleSelectCharacter(characterId)
-                    }
+                    onClick={() => {
+                      setSelectedCharacterId(characterId);
+                      setCharacterPassword("");
+                      setCharacterError("");
+                      setShowPasswordDialog(true);
+                    }}
+                    aria-pressed={selectedCharacterId === characterId}
                     className="flex items-center gap-3 border rounded-lg p-3 text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
                   >
                     {character.tokenImageUrl && (
                       <img
                         src={character.tokenImageUrl}
-                        alt={character.name ?? 'Charakter'}
+                        alt={character.name ?? "Charakter"}
                         className="w-14 h-14 rounded-full object-cover"
                       />
                     )}
 
                     <div>
                       <p className="font-semibold">
-                        {character.name ?? 'Unbenannter Charakter'}
+                        {character.name ?? "Unbenannter Charakter"}
                       </p>
 
                       <p className="text-sm text-gray-500">
@@ -328,7 +298,7 @@ export default function JoinGame({
                       </p>
                     </div>
                   </button>
-                )
+                );
               })}
             </div>
           </div>
@@ -339,7 +309,7 @@ export default function JoinGame({
               sessionId={session.id}
               playerId={player.id}
               onCreated={async () => {
-                await charactersQuery.refetch()
+                await charactersQuery.refetch();
               }}
             />
           )}
@@ -355,9 +325,55 @@ export default function JoinGame({
               Charakter wird ausgewählt...
             </p>
           )}
-
         </div>
       </Modal>
+
+      <Modal
+        isOpen={showPasswordDialog && Boolean(selectedCharacterId)}
+        onClose={() => {
+          setShowPasswordDialog(false);
+          setSelectedCharacterId("");
+          setCharacterPassword("");
+          setCharacterError("");
+        }}
+      >
+        <h2 className="mb-4 text-xl font-bold">
+          {characters.find((character) => character.id === selectedCharacterId)
+            ?.name ?? "Charakter"}{" "}
+          anmelden
+        </h2>
+
+        <form onSubmit={handleSelectCharacter} className="space-y-4">
+          <div>
+            <label
+              htmlFor="selected-character-password"
+              className="block text-sm font-medium mb-1"
+            >
+              Charakterpasswort
+            </label>
+            <TextInput
+              id="selected-character-password"
+              type="password"
+              className="mt-1 block w-full rounded-md shadow-sm p-2"
+              placeholder="Charakterpasswort eingeben"
+              autoComplete="current-password"
+              value={characterPassword}
+              onChange={(event) => setCharacterPassword(event.target.value)}
+              required
+            />
+          </div>
+
+          {characterError && (
+            <p className="text-sm text-red-500" role="alert">
+              {characterError}
+            </p>
+          )}
+
+          <Button type="submit" variant="primary" disabled={selectingCharacter}>
+            {selectingCharacter ? "Prüfe Passwort..." : "Charakter spielen"}
+          </Button>
+        </form>
+      </Modal>
     </>
-  )
+  );
 }

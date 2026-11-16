@@ -1,27 +1,28 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, type ReactNode } from "react";
 
 type ModalProps = {
-  isOpen: boolean
-  onClose: () => void
-  children: ReactNode
-}
+  isOpen: boolean;
+  onClose: () => void;
+  children: ReactNode;
+  size?: "default" | "wide";
+};
 
-function Modal({ isOpen, onClose, children }: ModalProps) {
+function Modal({ isOpen, onClose, children, size = "default" }: ModalProps) {
   // Prevent background scrolling when modal is open
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden'
+      document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = 'unset'
+      document.body.style.overflow = "unset";
     }
 
     return () => {
-      document.body.style.overflow = 'unset'
-    }
-  }, [isOpen])
+      document.body.style.overflow = "unset";
+    };
+  }, [isOpen]);
 
   // If the modal shouldn't be shown, render nothing
-  if (!isOpen) return null
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -36,7 +37,9 @@ function Modal({ isOpen, onClose, children }: ModalProps) {
       />
 
       {/* 2. Modal Content Container */}
-      <div className="bg-secondary-bg relative z-10 w-full max-w-md rounded-lg p-6 shadow-xl transition-all m-4">
+      <div
+        className={`bg-secondary-bg relative z-10 w-full ${size === "wide" ? "max-w-xl" : "max-w-md"} rounded-lg p-6 shadow-xl transition-all m-4`}
+      >
         {/* Close Button (X) */}
         <button
           type="button"
@@ -60,12 +63,10 @@ function Modal({ isOpen, onClose, children }: ModalProps) {
         </button>
 
         {/* 3. Dynamic Content Slot */}
-        <div className="mt-6">
-          {children}
-        </div>
+        <div className="mt-6">{children}</div>
       </div>
     </div>
-  )
+  );
 }
 
-export default Modal
+export default Modal;

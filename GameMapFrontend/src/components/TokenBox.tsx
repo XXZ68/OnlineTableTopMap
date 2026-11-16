@@ -4,24 +4,206 @@ import {
   type CSSProperties,
   type DragEvent,
   type FormEvent,
-} from 'react'
-import { deleteApiTokenId, getApiCharacterSessionSessionId, getApiCompendiumMonsters, patchApiTokenIdHp } from '../api'
-import { CharacterDto, CompendiumMonsterDto, MapTokenDto } from '../model'
+} from "react";
+import {
+  deleteApiTokenId,
+  getApiCharacterId,
+  getApiCharacterSessionSessionId,
+  getApiCompendiumMonsters,
+  patchApiTokenIdHp,
+  patchApiCharacterIdHp,
+  postApiCharacterIdLevelUp,
+} from "../api";
+import { CharacterDto, CompendiumMonsterDto, MapTokenDto } from "../model";
 
 type TokenInspectorProps = {
-  token: MapTokenDto
-  sessionId: string | null
-  onClose: () => void
-  onHpChanged?: (id: string, newHp: number) => void
-  onTokenDeleted?: (id: string) => void
-}
+  token: MapTokenDto;
+  sessionId: string | null;
+  onClose: () => void;
+  onHpChanged?: (id: string, newHp: number) => void;
+  onTokenDeleted?: (id: string) => void;
+  isDungeonMaster: boolean;
+};
+
+type PlayerCharacterSheetProps = {
+  characterId?: string | null;
+  playerId?: string | null;
+  onUpdated: (character: CharacterDto) => void;
+};
 
 export type TokenBoxProps = {
-  sessionId: string | null
-  selectedToken: MapTokenDto | undefined
-  onCloseInspector: () => void
-  onHpChanged: (id: string, newHp: number) => void
-  onTokenDeleted: (id: string) => void
+  sessionId: string | null;
+  selectedToken: MapTokenDto | undefined;
+  selectedCharacterId?: string | null;
+  playerId?: string | null;
+  isDungeonMaster: boolean;
+  onCloseInspector: () => void;
+  onHpChanged: (id: string, newHp: number) => void;
+  onTokenDeleted: (id: string) => void;
+  onCharacterUpdated: (character: CharacterDto) => void;
+};
+
+function PlayerCharacterSheet({
+  characterId,
+  playerId,
+  onUpdated,
+}: PlayerCharacterSheetProps) {
+  const [character, setCharacter] = useState<CharacterDto>();
+  const [hp, setHp] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLevelingUp, setIsLevelingUp] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!characterId) {
+      setCharacter(undefined);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoading(true);
+    void getApiCharacterId(characterId)
+      .then((response) => {
+        if (!isMounted) return;
+        setCharacter(response.data);
+        setHp(String(response.data.currentHp ?? 0));
+      })
+      .catch((err: unknown) => {
+        console.error("Failed to load character sheet:", err);
+        if (isMounted) setMessage("Character sheet could not be loaded.");
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [characterId]);
+
+  const handleSaveHp = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!characterId || !playerId) return;
+
+    setIsSaving(true);
+    setMessage("");
+    try {
+      const response = await patchApiCharacterIdHp(
+        characterId,
+        playerId,
+        Number(hp),
+      );
+      setCharacter(response.data);
+      setHp(String(response.data.currentHp ?? 0));
+      onUpdated(response.data);
+    } catch (err: unknown) {
+      console.error("Failed to update character HP:", err);
+      setMessage("HP could not be saved.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleLevelUp = async () => {
+    if (!characterId || !playerId || !character || character.level! >= 20)
+      return;
+
+    setIsLevelingUp(true);
+    setMessage("");
+    try {
+      const response = await postApiCharacterIdLevelUp(characterId, playerId);
+      const result = response.data;
+      setCharacter(result.character);
+      setHp(String(result.character.currentHp ?? 0));
+      setMessage(
+        `Level ${result.character.level}: d${result.hitDie} roll ${result.hitPointRoll}, +${result.hitPointRoll} HP.`,
+      );
+      onUpdated(result.character);
+    } catch (err: unknown) {
+      console.error("Failed to level up character:", err);
+      setMessage("Character could not be leveled up.");
+    } finally {
+      setIsLevelingUp(false);
+    }
+  };
+
+  if (!characterId) {
+    return (
+      <div style={{ ...subtextStyle, marginTop: "12px" }}>
+        No character is assigned to this player.
+      </div>
+    );
+  }
+
+  if (isLoading || !character) {
+    return (
+      <div style={{ ...subtextStyle, marginTop: "12px" }}>
+        Loading character sheet...
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: "14px", color: "#f5f5f5" }}>
+      <h3 style={{ margin: "0 0 8px", fontSize: "15px" }}>{character.name}</h3>
+      <div style={{ fontSize: "12px", color: "#aaa", marginBottom: "12px" }}>
+        {character.classIndex || "Character"}
+        {character.raceIndex ? ` · ${character.raceIndex}` : ""} · Level{" "}
+        {character.level}
+        <div style={{ marginTop: "3px" }}>
+          AC: {character.armorClass} · Speed: {character.speedInFeet} ft
+        </div>
+      </div>
+
+      <form
+        onSubmit={handleSaveHp}
+        style={{ display: "flex", gap: "8px", alignItems: "center" }}
+      >
+        <label
+          htmlFor="player-character-hp"
+          style={{ color: "#aaa", fontSize: "12px" }}
+        >
+          HP
+        </label>
+        <input
+          id="player-character-hp"
+          type="number"
+          min={0}
+          max={character.maxHp}
+          value={hp}
+          onChange={(event) => setHp(event.target.value)}
+          style={{ ...formInputStyle, width: "68px" }}
+        />
+        <span style={{ color: "#888", fontSize: "12px" }}>
+          / {character.maxHp}
+        </span>
+        <button
+          type="submit"
+          disabled={isSaving || !playerId}
+          style={sheetButtonStyle}
+        >
+          {isSaving ? "Saving..." : "Save HP"}
+        </button>
+      </form>
+
+      <button
+        type="button"
+        onClick={() => void handleLevelUp()}
+        disabled={isLevelingUp || !playerId || character.level! >= 20}
+        style={{ ...sheetButtonStyle, width: "100%", marginTop: "10px" }}
+      >
+        {isLevelingUp
+          ? "Rolling Hit Die..."
+          : character.level! >= 20
+            ? "Maximum Level"
+            : "Level Up"}
+      </button>
+      {message && (
+        <div style={{ ...subtextStyle, marginTop: "10px" }}>{message}</div>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -34,63 +216,79 @@ function TokenInspector({
   onClose,
   onHpChanged,
   onTokenDeleted,
+  isDungeonMaster,
 }: TokenInspectorProps) {
-  const [hp, setHp] = useState(String(token.currentHp))
-  const [isSaving, setIsSaving] = useState(false)
+  const [hp, setHp] = useState(String(token.currentHp));
+  const [isSaving, setIsSaving] = useState(false);
+  const [character, setCharacter] = useState<CharacterDto>();
 
-    const handleSaveHp = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setIsSaving(true)
+  useEffect(() => {
+    if (isDungeonMaster || !token.characterId) return;
+
+    let isMounted = true;
+    void getApiCharacterId(token.characterId)
+      .then((response) => {
+        if (isMounted) setCharacter(response.data);
+      })
+      .catch((err: unknown) =>
+        console.error("Failed to load character sheet:", err),
+      );
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isDungeonMaster, token.characterId]);
+
+  const handleSaveHp = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSaving(true);
 
     try {
-      const newHp = Number(hp)
+      const newHp = Number(hp);
 
       await patchApiTokenIdHp(
         token.id!,
         { newHp },
         sessionId ? { sessionId } : undefined,
-      )
+      );
 
-      onHpChanged?.(token.id!, newHp)
+      onHpChanged?.(token.id!, newHp);
     } catch (err: unknown) {
-      console.error('Failed to update HP:', err)
+      console.error("Failed to update HP:", err);
     } finally {
-      setIsSaving(false)
+      setIsSaving(false);
     }
-  }
+  };
   const handleDelete = async () => {
     try {
-      await deleteApiTokenId(
-        token.id!,
-        sessionId ? { sessionId } : undefined,
-      )
+      await deleteApiTokenId(token.id!, sessionId ? { sessionId } : undefined);
 
-      onTokenDeleted?.(token.id!)
-      onClose()
+      onTokenDeleted?.(token.id!);
+      onClose();
     } catch (err: unknown) {
-      console.error('Failed to remove token:', err)
+      console.error("Failed to remove token:", err);
     }
-  }
+  };
 
   return (
     <div
       style={{
-        padding: '14px',
-        borderTop: '1px solid #333',
-        background: '#141414',
+        padding: "14px",
+        borderTop: "1px solid #333",
+        background: "#141414",
       }}
     >
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
         }}
       >
         <strong
           style={{
-            color: '#e0a96d',
-            fontSize: '14px',
+            color: "#e0a96d",
+            fontSize: "14px",
           }}
         >
           {token.name}
@@ -100,10 +298,10 @@ function TokenInspector({
           type="button"
           onClick={onClose}
           style={{
-            background: 'none',
-            border: 'none',
-            color: '#888',
-            cursor: 'pointer',
+            background: "none",
+            border: "none",
+            color: "#888",
+            cursor: "pointer",
           }}
         >
           ✕
@@ -112,27 +310,46 @@ function TokenInspector({
 
       <div
         style={{
-          fontSize: '11px',
-          color: '#888',
-          margin: '4px 0 10px 0',
+          fontSize: "11px",
+          color: "#888",
+          margin: "4px 0 10px 0",
         }}
       >
-        Pos: ({token.gridX}, {token.gridY}) | Size:{' '}
-        {token.sizeInCells || 1}x{token.sizeInCells || 1}
+        Pos: ({token.gridX}, {token.gridY}) | Size: {token.sizeInCells || 1}x
+        {token.sizeInCells || 1}
       </div>
+
+      {!isDungeonMaster && (
+        <div style={{ fontSize: "12px", color: "#aaa", marginBottom: "10px" }}>
+          {character ? (
+            <>
+              <div>
+                {character.classIndex || "Character"}
+                {character.raceIndex ? ` · ${character.raceIndex}` : ""} · Level{" "}
+                {character.level}
+              </div>
+              <div style={{ marginTop: "3px" }}>
+                AC: {character.armorClass} · Speed: {character.speedInFeet} ft
+              </div>
+            </>
+          ) : (
+            <div>Loading character sheet...</div>
+          )}
+        </div>
+      )}
 
       <form
         onSubmit={handleSaveHp}
         style={{
-          display: 'flex',
-          gap: '8px',
-          alignItems: 'center',
+          display: "flex",
+          gap: "8px",
+          alignItems: "center",
         }}
       >
         <span
           style={{
-            color: '#aaa',
-            fontSize: '12px',
+            color: "#aaa",
+            fontSize: "12px",
           }}
         >
           HP:
@@ -143,20 +360,20 @@ function TokenInspector({
           value={hp}
           onChange={(event) => setHp(event.target.value)}
           style={{
-            width: '60px',
-            padding: '4px 6px',
-            background: '#111',
-            border: '1px solid #444',
-            borderRadius: '4px',
-            color: '#fff',
-            fontSize: '12px',
+            width: "60px",
+            padding: "4px 6px",
+            background: "#111",
+            border: "1px solid #444",
+            borderRadius: "4px",
+            color: "#fff",
+            fontSize: "12px",
           }}
         />
 
         <span
           style={{
-            color: '#666',
-            fontSize: '12px',
+            color: "#666",
+            fontSize: "12px",
           }}
         >
           / {token.maxHp}
@@ -166,38 +383,40 @@ function TokenInspector({
           type="submit"
           disabled={isSaving}
           style={{
-            padding: '5px 10px',
-            background: '#2563eb',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            fontSize: '12px',
-            cursor: 'pointer',
+            padding: "5px 10px",
+            background: "#2563eb",
+            color: "#fff",
+            border: "none",
+            borderRadius: "4px",
+            fontSize: "12px",
+            cursor: "pointer",
           }}
         >
-          {isSaving ? '...' : 'Save'}
+          {isSaving ? "..." : "Save"}
         </button>
       </form>
 
-      <button
-        type="button"
-        onClick={handleDelete}
-        style={{
-          width: '100%',
-          marginTop: '8px',
-          padding: '6px',
-          background: '#7f1d1d',
-          color: '#fca5a5',
-          border: '1px solid #991b1b',
-          borderRadius: '4px',
-          fontSize: '12px',
-          cursor: 'pointer',
-        }}
-      >
-        Remove from Board
-      </button>
+      {isDungeonMaster && (
+        <button
+          type="button"
+          onClick={handleDelete}
+          style={{
+            width: "100%",
+            marginTop: "8px",
+            padding: "6px",
+            background: "#7f1d1d",
+            color: "#fca5a5",
+            border: "1px solid #991b1b",
+            borderRadius: "4px",
+            fontSize: "12px",
+            cursor: "pointer",
+          }}
+        >
+          Remove from Board
+        </button>
+      )}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -206,17 +425,17 @@ function TokenInspector({
 function CustomMonsterForm({
   onAddMonster,
 }: {
-  onAddMonster: (monster: CompendiumMonsterDto) => void
+  onAddMonster: (monster: CompendiumMonsterDto) => void;
 }) {
-  const [name, setName] = useState('')
-  const [hp, setHp] = useState('10')
-  const [ac, setAc] = useState('10')
-  const [size, setSize] = useState('Medium')
-  const [imageUrl, setImageUrl] = useState('')
+  const [name, setName] = useState("");
+  const [hp, setHp] = useState("10");
+  const [ac, setAc] = useState("10");
+  const [size, setSize] = useState("Medium");
+  const [imageUrl, setImageUrl] = useState("");
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!name.trim()) return
+    event.preventDefault();
+    if (!name.trim()) return;
 
     onAddMonster({
       index: `custom-${Date.now()}`,
@@ -224,25 +443,25 @@ function CustomMonsterForm({
       hitPoints: Number(hp) || 10,
       armorClass: Number(ac) || 10,
       size,
-      challengeRating: undefined
-    })
+      challengeRating: undefined,
+    });
 
-    setName('')
-    setImageUrl('')
-  }
+    setName("");
+    setImageUrl("");
+  };
 
   return (
     <form
       onSubmit={handleSubmit}
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '6px',
-        padding: '10px',
-        background: '#222',
-        border: '1px solid #3a3a3a',
-        borderRadius: '4px',
-        marginBottom: '12px',
+        display: "flex",
+        flexDirection: "column",
+        gap: "6px",
+        padding: "10px",
+        background: "#222",
+        border: "1px solid #3a3a3a",
+        borderRadius: "4px",
+        marginBottom: "12px",
       }}
     >
       <input
@@ -254,27 +473,27 @@ function CustomMonsterForm({
         style={formInputStyle}
       />
 
-      <div style={{ display: 'flex', gap: '6px' }}>
+      <div style={{ display: "flex", gap: "6px" }}>
         <input
           type="number"
           placeholder="HP"
           value={hp}
           onChange={(e) => setHp(e.target.value)}
-          style={{ ...formInputStyle, width: '50%' }}
+          style={{ ...formInputStyle, width: "50%" }}
         />
         <input
           type="number"
           placeholder="AC"
           value={ac}
           onChange={(e) => setAc(e.target.value)}
-          style={{ ...formInputStyle, width: '50%' }}
+          style={{ ...formInputStyle, width: "50%" }}
         />
       </div>
 
       <select
         value={size}
         onChange={(e) => setSize(e.target.value)}
-        style={{ ...formInputStyle, cursor: 'pointer' }}
+        style={{ ...formInputStyle, cursor: "pointer" }}
       >
         <option value="Tiny">Tiny (1/2 cell)</option>
         <option value="Small">Small (1 cell)</option>
@@ -295,21 +514,21 @@ function CustomMonsterForm({
       <button
         type="submit"
         style={{
-          marginTop: '4px',
-          padding: '6px',
-          background: '#b45309',
-          color: '#ffffff',
-          border: 'none',
-          borderRadius: '4px',
-          fontSize: '12px',
-          fontWeight: 'bold',
-          cursor: 'pointer',
+          marginTop: "4px",
+          padding: "6px",
+          background: "#b45309",
+          color: "#ffffff",
+          border: "none",
+          borderRadius: "4px",
+          fontSize: "12px",
+          fontWeight: "bold",
+          cursor: "pointer",
         }}
       >
         Save Custom Token
       </button>
     </form>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -318,289 +537,385 @@ function CustomMonsterForm({
 export default function TokenBox({
   sessionId,
   selectedToken,
+  selectedCharacterId,
+  playerId,
+  isDungeonMaster,
   onCloseInspector,
   onHpChanged,
   onTokenDeleted,
+  onCharacterUpdated,
 }: TokenBoxProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<'monsters' | 'custom' | 'characters'>('monsters')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [monsters, setMonsters] = useState<CompendiumMonsterDto[]>([])
-  const [customMonsters, setCustomMonsters] = useState<CompendiumMonsterDto[]>([])
-  const [characters, setCharacters] = useState<CharacterDto[]>([])
-  const [loading, setLoading] = useState(false)
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<
+    "monsters" | "custom" | "characters"
+  >("monsters");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [monsters, setMonsters] = useState<CompendiumMonsterDto[]>([]);
+  const [customMonsters, setCustomMonsters] = useState<CompendiumMonsterDto[]>(
+    [],
+  );
+  const [characters, setCharacters] = useState<CharacterDto[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (activeTab !== 'monsters') return
+    if (activeTab !== "monsters") return;
 
-    const controller = new AbortController()
+    const controller = new AbortController();
 
     const timeout = setTimeout(async () => {
-      setLoading(true)
+      setLoading(true);
 
       try {
         const response = await getApiCompendiumMonsters(
           { query: searchQuery },
           { signal: controller.signal },
-        )
+        );
 
-        setMonsters(response.data)
+        setMonsters(response.data);
       } catch (err: unknown) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        console.error('Failed to fetch monsters:', err)
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        console.error("Failed to fetch monsters:", err);
       } finally {
         if (!controller.signal.aborted) {
-          setLoading(false)
+          setLoading(false);
         }
       }
-    }, 250)
+    }, 250);
 
     return () => {
-      clearTimeout(timeout)
-      controller.abort()
-    }
-  }, [searchQuery, activeTab])
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [searchQuery, activeTab]);
 
   // 2. Fetch Characters
   useEffect(() => {
-    if (activeTab !== 'characters' || !sessionId) return
+    if (activeTab !== "characters" || !sessionId) return;
 
-    const controller = new AbortController()
+    const controller = new AbortController();
 
     async function loadCharacters() {
-      setLoading(true)
+      setLoading(true);
 
       try {
+        const res = await getApiCharacterSessionSessionId(sessionId as string, {
+          signal: controller.signal,
+        });
 
-        const res = await getApiCharacterSessionSessionId(
-          sessionId as string,
-          { signal: controller.signal }
-        )
-
-        setCharacters(res.data as CharacterDto[])
+        setCharacters(res.data as CharacterDto[]);
       } catch (err: unknown) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
+        if (err instanceof DOMException && err.name === "AbortError") return;
 
-        console.error(err)
+        console.error(err);
       } finally {
         if (!controller.signal.aborted) {
-          setLoading(false)
+          setLoading(false);
         }
       }
     }
 
-    const id = setTimeout(loadCharacters, 0)
+    const id = setTimeout(loadCharacters, 0);
 
     return () => {
-      clearTimeout(id)
-      controller.abort()
-    }
-  }, [sessionId, activeTab])
+      clearTimeout(id);
+      controller.abort();
+    };
+  }, [sessionId, activeTab]);
 
   // 3. Drag handlers
   const handleDragMonsterStart = (
     event: DragEvent<HTMLDivElement>,
-    monster: CompendiumMonsterDto
+    monster: CompendiumMonsterDto,
   ) => {
     event.dataTransfer.setData(
-      'application/vtt-spawn-monster',
+      "application/vtt-spawn-monster",
       JSON.stringify({
         monsterIndex: monster.index,
         name: monster.name,
-      })
-    )
-    event.dataTransfer.effectAllowed = 'copy'
-  }
+      }),
+    );
+    event.dataTransfer.effectAllowed = "copy";
+  };
 
   const handleDragCharacterStart = (
     event: DragEvent<HTMLDivElement>,
-    character: CharacterDto
+    character: CharacterDto,
   ) => {
     event.dataTransfer.setData(
-      'application/vtt-place-character',
+      "application/vtt-place-character",
       JSON.stringify({
         characterId: character.id,
-      })
-    )
-    event.dataTransfer.effectAllowed = 'copy'
-  }
+      }),
+    );
+    event.dataTransfer.effectAllowed = "copy";
+  };
 
-  const isDrawerOpen = isOpen || Boolean(selectedToken)
+  const isOwnCharacterToken =
+    selectedToken?.characterId === selectedCharacterId;
+  const isDrawerOpen = isDungeonMaster
+    ? isOpen || Boolean(selectedToken)
+    : isOpen || Boolean(selectedToken && isOwnCharacterToken);
 
   return (
     <div
       style={{
-        position: 'absolute',
+        position: "absolute",
         top: 0,
         right: 0,
-        width: '320px',
-        height: '100%',
-        background: '#1a1a1a',
-        borderLeft: '1px solid rgba(255,255,255,0.15)',
-        boxShadow: '-4px 0 15px rgba(0,0,0,0.6)',
+        width: "320px",
+        height: "100%",
+        background: "#1a1a1a",
+        borderLeft: "1px solid rgba(255,255,255,0.15)",
+        boxShadow: "-4px 0 15px rgba(0,0,0,0.6)",
         zIndex: 200,
-        display: 'flex',
-        flexDirection: 'column',
-        transform: isDrawerOpen ? 'translateX(0)' : 'translateX(100%)',
-        transition: 'transform 0.25s ease',
+        display: "flex",
+        flexDirection: "column",
+        transform: isDrawerOpen ? "translateX(0)" : "translateX(100%)",
+        transition: "transform 0.25s ease",
       }}
     >
       {/* Toggle Button */}
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          position: 'absolute',
-          left: '-36px',
-          top: '20px',
-          width: '36px',
-          height: '42px',
-          background: '#1a1a1a',
-          color: '#e0a96d',
-          border: '1px solid rgba(255,255,255,0.15)',
-          borderRight: 'none',
-          borderRadius: '6px 0 0 6px',
-          cursor: 'pointer',
-          fontWeight: 'bold',
-          fontSize: '14px',
+        onClick={() => {
+          const shouldOpen = !isDrawerOpen;
+          setIsOpen(shouldOpen);
+          if (!shouldOpen) onCloseInspector();
         }}
-        title="Toggle TokenBox"
+        style={{
+          position: "absolute",
+          left: "-36px",
+          top: "20px",
+          width: "36px",
+          height: "42px",
+          background: "#1a1a1a",
+          color: "#e0a96d",
+          border: "1px solid rgba(255,255,255,0.15)",
+          borderRight: "none",
+          borderRadius: "6px 0 0 6px",
+          cursor: "pointer",
+          fontWeight: "bold",
+          fontSize: "14px",
+        }}
+        title={isDungeonMaster ? "Toggle TokenBox" : "Character Sheet"}
       >
-        {isDrawerOpen ? '▶' : '🧰'}
+        {isDrawerOpen ? "▶" : "🧰"}
       </button>
 
-      {/* Header & Mode Tabs */}
-      <div style={{ padding: '14px', borderBottom: '1px solid #333' }}>
-        <h3 style={{ margin: '0 0 10px 0', color: '#f5f5f5', fontSize: '15px' }}>
-          GM TokenBox
-        </h3>
+      {isDungeonMaster ? (
+        <>
+          {/* Header & Mode Tabs */}
+          <div style={{ padding: "14px", borderBottom: "1px solid #333" }}>
+            <h3
+              style={{
+                margin: "0 0 10px 0",
+                color: "#f5f5f5",
+                fontSize: "15px",
+              }}
+            >
+              GM TokenBox
+            </h3>
 
-        <div style={{ display: 'flex', gap: '4px' }}>
-          <button
-            type="button"
-            onClick={() => setActiveTab('monsters')}
-            style={activeTab === 'monsters' ? activeTabStyle : inactiveTabStyle}
-          >
-            SRD
-          </button>
+            <div style={{ display: "flex", gap: "4px" }}>
+              <button
+                type="button"
+                onClick={() => setActiveTab("monsters")}
+                style={
+                  activeTab === "monsters" ? activeTabStyle : inactiveTabStyle
+                }
+              >
+                SRD
+              </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('custom')}
-            style={activeTab === 'custom' ? activeTabStyle : inactiveTabStyle}
-          >
-            Custom
-          </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("custom")}
+                style={
+                  activeTab === "custom" ? activeTabStyle : inactiveTabStyle
+                }
+              >
+                Custom
+              </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('characters')}
-            style={activeTab === 'characters' ? activeTabStyle : inactiveTabStyle}
-          >
-            Party
-          </button>
-        </div>
-      </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab("characters")}
+                style={
+                  activeTab === "characters" ? activeTabStyle : inactiveTabStyle
+                }
+              >
+                Party
+              </button>
+            </div>
+          </div>
 
-      {/* Content Area */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
-        {/* TAB 1: SRD Monsters */}
-        {activeTab === 'monsters' && (
-          <>
-            <input
-              type="text"
-              placeholder="Search monsters (e.g. Goblin, Dragon)..."
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              style={inputStyle}
-            />
+          {/* Content Area */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "12px" }}>
+            {/* TAB 1: SRD Monsters */}
+            {activeTab === "monsters" && (
+              <>
+                <input
+                  type="text"
+                  placeholder="Search monsters (e.g. Goblin, Dragon)..."
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  style={inputStyle}
+                />
 
-            {loading && <div style={subtextStyle}>Searching SRD...</div>}
+                {loading && <div style={subtextStyle}>Searching SRD...</div>}
 
-            {!loading && monsters.length === 0 && (
-              <div style={subtextStyle}>No monsters found.</div>
+                {!loading && monsters.length === 0 && (
+                  <div style={subtextStyle}>No monsters found.</div>
+                )}
+
+                {monsters.map((monster) => (
+                  <div
+                    key={monster.index}
+                    draggable
+                    onDragStart={(event) =>
+                      handleDragMonsterStart(event, monster)
+                    }
+                    style={itemCardStyle}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <strong style={{ color: "#fff" }}>{monster.name}</strong>
+                      <span style={badgeStyle}>
+                        CR {monster.challengeRating}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "#888",
+                        marginTop: "4px",
+                      }}
+                    >
+                      Size: {monster.size} | AC: {monster.armorClass} | HP:{" "}
+                      {monster.hitPoints}
+                    </div>
+                  </div>
+                ))}
+              </>
             )}
 
-            {monsters.map((monster) => (
-              <div
-                key={monster.index}
-                draggable
-                onDragStart={(event) => handleDragMonsterStart(event, monster)}
-                style={itemCardStyle}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <strong style={{ color: '#fff' }}>{monster.name}</strong>
-                  <span style={badgeStyle}>CR {monster.challengeRating}</span>
-                </div>
-                <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
-                  Size: {monster.size} | AC: {monster.armorClass} | HP: {monster.hitPoints}
-                </div>
+            {/* TAB 2: Custom Monsters */}
+            {activeTab === "custom" && (
+              <div>
+                <CustomMonsterForm
+                  onAddMonster={(m) =>
+                    setCustomMonsters((prev) => [m, ...prev])
+                  }
+                />
+
+                {customMonsters.length === 0 ? (
+                  <div style={subtextStyle}>
+                    No custom monsters created yet.
+                  </div>
+                ) : (
+                  customMonsters.map((monster) => (
+                    <div
+                      key={monster.index}
+                      draggable
+                      onDragStart={(event) =>
+                        handleDragMonsterStart(event, monster)
+                      }
+                      style={{ ...itemCardStyle, borderColor: "#78350f" }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <strong style={{ color: "#fcd34d" }}>
+                          {monster.name}
+                        </strong>
+                        <span
+                          style={{
+                            ...badgeStyle,
+                            background: "#78350f",
+                            color: "#fef08a",
+                          }}
+                        >
+                          Custom
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#aaa",
+                          marginTop: "4px",
+                        }}
+                      >
+                        Size: {monster.size} | AC: {monster.armorClass} | HP:{" "}
+                        {monster.hitPoints}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
-            ))}
-          </>
-        )}
+            )}
 
-        {/* TAB 2: Custom Monsters */}
-        {activeTab === 'custom' && (
-          <div>
-            <CustomMonsterForm
-              onAddMonster={(m) => setCustomMonsters((prev) => [m, ...prev])}
-            />
-
-            {customMonsters.length === 0 ? (
-              <div style={subtextStyle}>No custom monsters created yet.</div>
-            ) : (
-              customMonsters.map((monster) => (
-                <div
-                  key={monster.index}
-                  draggable
-                  onDragStart={(event) => handleDragMonsterStart(event, monster)}
-                  style={{ ...itemCardStyle, borderColor: '#78350f' }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <strong style={{ color: '#fcd34d' }}>{monster.name}</strong>
-                    <span style={{ ...badgeStyle, background: '#78350f', color: '#fef08a' }}>
-                      Custom
-                    </span>
+            {/* TAB 3: Session Characters */}
+            {activeTab === "characters" && (
+              <>
+                {characters.length === 0 ? (
+                  <div style={subtextStyle}>
+                    No characters registered in session.
                   </div>
-                  <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px' }}>
-                    Size: {monster.size} | AC: {monster.armorClass} | HP: {monster.hitPoints}
-                  </div>
-                </div>
-              ))
+                ) : (
+                  characters.map((character) => (
+                    <div
+                      key={character.id}
+                      draggable
+                      onDragStart={(event) =>
+                        handleDragCharacterStart(event, character)
+                      }
+                      style={itemCardStyle}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <strong style={{ color: "#fff" }}>
+                          {character.name}
+                        </strong>
+                        <span style={badgeStyle}>Lvl {character.level}</span>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#888",
+                          marginTop: "4px",
+                        }}
+                      >
+                        HP: {character.currentHp}/{character.maxHp} | AC:{" "}
+                        {character.armorClass}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </>
             )}
           </div>
-        )}
-
-        {/* TAB 3: Session Characters */}
-        {activeTab === 'characters' && (
-          <>
-            {characters.length === 0 ? (
-              <div style={subtextStyle}>No characters registered in session.</div>
-            ) : (
-              characters.map((character) => (
-                <div
-                  key={character.id}
-                  draggable
-                  onDragStart={(event) => handleDragCharacterStart(event, character)}
-                  style={itemCardStyle}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <strong style={{ color: '#fff' }}>{character.name}</strong>
-                    <span style={badgeStyle}>Lvl {character.level}</span>
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
-                    HP: {character.currentHp}/{character.maxHp} | AC: {character.armorClass}
-                  </div>
-                </div>
-              ))
-            )}
-          </>
-        )}
-      </div>
+        </>
+      ) : (
+        <PlayerCharacterSheet
+          characterId={selectedCharacterId}
+          playerId={playerId}
+          onUpdated={onCharacterUpdated}
+        />
+      )}
 
       {/* Inspector Drawer Footer */}
-      {selectedToken && (
+      {selectedToken && isDungeonMaster && (
         <TokenInspector
           key={selectedToken.id}
           token={selectedToken}
@@ -608,82 +923,93 @@ export default function TokenBox({
           onClose={onCloseInspector}
           onHpChanged={onHpChanged}
           onTokenDeleted={onTokenDeleted}
+          isDungeonMaster={isDungeonMaster}
         />
       )}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
+const sheetButtonStyle: CSSProperties = {
+  padding: "5px 9px",
+  background: "#2563eb",
+  color: "#fff",
+  border: "none",
+  borderRadius: "4px",
+  fontSize: "12px",
+  cursor: "pointer",
+};
+
 const activeTabStyle: CSSProperties = {
   flex: 1,
-  padding: '6px 4px',
-  background: '#e0a96d',
-  color: '#1a1a1a',
-  border: 'none',
-  borderRadius: '4px',
-  fontWeight: 'bold',
-  fontSize: '11px',
-  cursor: 'pointer',
-}
+  padding: "6px 4px",
+  background: "#e0a96d",
+  color: "#1a1a1a",
+  border: "none",
+  borderRadius: "4px",
+  fontWeight: "bold",
+  fontSize: "11px",
+  cursor: "pointer",
+};
 
 const inactiveTabStyle: CSSProperties = {
   flex: 1,
-  padding: '6px 4px',
-  background: '#2b2b2b',
-  color: '#aaa',
-  border: '1px solid #444',
-  borderRadius: '4px',
-  fontSize: '11px',
-  cursor: 'pointer',
-}
+  padding: "6px 4px",
+  background: "#2b2b2b",
+  color: "#aaa",
+  border: "1px solid #444",
+  borderRadius: "4px",
+  fontSize: "11px",
+  cursor: "pointer",
+};
 
 const inputStyle: CSSProperties = {
-  width: '100%',
-  padding: '7px 9px',
-  background: '#111',
-  border: '1px solid #444',
-  borderRadius: '4px',
-  color: '#fff',
-  fontSize: '12px',
-  marginBottom: '10px',
-  boxSizing: 'border-box',
-}
+  width: "100%",
+  padding: "7px 9px",
+  background: "#111",
+  border: "1px solid #444",
+  borderRadius: "4px",
+  color: "#fff",
+  fontSize: "12px",
+  marginBottom: "10px",
+  boxSizing: "border-box",
+};
 
 const formInputStyle: CSSProperties = {
-  width: '100%',
-  padding: '6px 8px',
-  background: '#111',
-  border: '1px solid #444',
-  borderRadius: '4px',
-  color: '#fff',
-  fontSize: '11px',
-  boxSizing: 'border-box',
-}
+  width: "100%",
+  padding: "6px 8px",
+  background: "#111",
+  border: "1px solid #444",
+  borderRadius: "4px",
+  color: "#fff",
+  fontSize: "11px",
+  boxSizing: "border-box",
+};
 
 const itemCardStyle: CSSProperties = {
-  padding: '8px 10px',
-  marginBottom: '8px',
-  background: '#252525',
-  border: '1px solid #383838',
-  borderRadius: '4px',
-  cursor: 'grab',
-  userSelect: 'none',
-}
+  padding: "8px 10px",
+  marginBottom: "8px",
+  background: "#252525",
+  border: "1px solid #383838",
+  borderRadius: "4px",
+  cursor: "grab",
+  userSelect: "none",
+};
 
 const badgeStyle: CSSProperties = {
-  fontSize: '10px',
-  background: '#333',
-  color: '#e0a96d',
-  padding: '2px 5px',
-  borderRadius: '3px',
-}
+  fontSize: "10px",
+  background: "#333",
+  color: "#e0a96d",
+  padding: "2px 5px",
+  borderRadius: "3px",
+};
 
 const subtextStyle: CSSProperties = {
-  fontSize: '12px',
-  color: '#666',
-  textAlign: 'center',
-  padding: '20px 0',
-}
+  fontSize: "12px",
+  color: "#666",
+  textAlign: "center",
+  padding: "20px 0",
+};
