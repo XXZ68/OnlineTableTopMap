@@ -328,10 +328,6 @@ export default function ActiveMap({
     const rect = mapContainerRef.current.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) return null;
 
-    const canvasX =
-      ((event.clientX - rect.left) / rect.width) * mapData.widthInPixels;
-    const canvasY =
-      ((event.clientY - rect.top) / rect.height) * mapData.heightInPixels;
 
     const cellSize = grid.cellSizeInPixels || 50;
     const offsetX = grid.offsetX || 0;
