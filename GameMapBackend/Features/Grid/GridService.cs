@@ -39,12 +39,13 @@ public class GridService : IGridService
         int safeCellSize = Math.Max(20, dto.CellSizeInPixels);
 
         grid.CellSizeInPixels = safeCellSize;
-        grid.Columns = mapWidth / safeCellSize;
-        grid.Rows = mapHeight / safeCellSize;
+        grid.Columns = (int)Math.Ceiling((double)mapWidth / safeCellSize);
+        grid.Rows = (int)Math.Ceiling((double)mapHeight / safeCellSize);
         grid.LineColor = dto.LineColor;
         grid.LineOpacity = Math.Clamp(dto.LineOpacity, 0.0, 1.0);
         grid.OffsetX = dto.OffsetX;
         grid.OffsetY = dto.OffsetY;
+
 
         await _context.SaveChangesAsync();
         return MapToDto(grid);

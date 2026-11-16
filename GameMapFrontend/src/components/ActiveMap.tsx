@@ -11,8 +11,20 @@ import {
   TransformComponent,
 } from 'react-zoom-pan-pinch';
 import TokenBox from './TokenBox';
-import { getApiMapId, postApiTokenMapMapIdPlaceCharacter, postApiTokenMapMapIdSpawnMonster } from '../api';
-import { ActiveSpellDto, GridDto, MapDetailDto, MapTokenDto, ParticipantDto, SpellCastEventDto } from '../model';
+import {
+  getApiMapId,
+  postApiTokenMapMapIdPlaceCharacter,
+  postApiTokenMapMapIdSpawnMonster,
+  putApiGridMapMapId,
+} from '../api';
+import {
+  ActiveSpellDto,
+  GridDto,
+  MapDetailDto,
+  MapTokenDto,
+  ParticipantDto,
+  SpellCastEventDto,
+} from '../model';
 
 import { getImageUrl } from '../utils/imageUrl';
 
@@ -55,9 +67,15 @@ export default function ActiveMap({
   const [activeSpells, setActiveSpells] = useState<ActiveSpellDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedToken, setSelectedToken] = useState<MapTokenDto>();
+
   // Drag-and-drop landing preview state
   const [previewCell, setPreviewCell] = useState<{ gridX: number; gridY: number } | null>(null);
   const [draggedTokenSize, setDraggedTokenSize] = useState<number>(1);
+
+  // Tracks whether user interacted with TokenBox so clicking outside can close it cleanly
+  const [tokenBoxResetKey, setTokenBoxResetKey] = useState<number>(0);
+  const isTokenBoxInteractedRef = useRef<boolean>(false);
+  const isDraggingRef = useRef<boolean>(false);
 
   // State of images
   const [failedTokenImages, setFailedTokenImages] = useState<Set<string>>(
@@ -66,12 +84,14 @@ export default function ActiveMap({
 
   // References
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const tokenBoxWrapperRef = useRef<HTMLDivElement | null>(null);
 
   // Derived loading state
   const isLoading = !mapData || mapData.id !== mapId;
 
-  //Helper for Token Preview
+  // Helper for Token Preview
   const handleGlobalDragStartCapture = (event: DragEvent<HTMLDivElement>) => {
+    isDraggingRef.current = true;
     const target = event.target as HTMLElement;
     // If it's an existing board token, handleDragStart already sets its size
     if (target.classList.contains('vtt-token')) return;
@@ -89,6 +109,47 @@ export default function ActiveMap({
     }
   };
 
+  const [cellSizeInput, setCellSizeInput] = useState<string>('50');
+
+  useEffect(() => {
+    if (grid?.cellSizeInPixels) {
+      setCellSizeInput(String(grid.cellSizeInPixels));
+    }
+  }, [grid?.cellSizeInPixels]);
+
+  // --- CLICK OUTSIDE TOKENBOX TO CLOSE (EXCLUDING DRAG & DROP / TOKENS) ---
+  useEffect(() => {
+    const handlePointerDownOutside = (event: PointerEvent) => {
+      if (isDraggingRef.current) return;
+
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      // Ignore clicks inside the TokenBox wrapper
+      if (tokenBoxWrapperRef.current?.contains(target)) {
+        isTokenBoxInteractedRef.current = true;
+        return;
+      }
+
+      // Ignore clicks on board tokens (since clicking a token selects/drags it)
+      if (target.closest('.vtt-token')) {
+        return;
+      }
+
+      // Clicked outside TokenBox! Close inspector and close drawer if it was opened
+      setSelectedToken(undefined);
+      if (isTokenBoxInteractedRef.current) {
+        isTokenBoxInteractedRef.current = false;
+        setTokenBoxResetKey((prev) => prev + 1);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDownOutside);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDownOutside);
+    };
+  }, []);
+
   // --- 2. FETCH INITIAL MAP DATA ---
   useEffect(() => {
     let isMounted = true;
@@ -97,7 +158,7 @@ export default function ActiveMap({
       try {
         const response = await getApiMapId(mapId);
         const data = response.data as MapDetailDto;
-        console.log(data)
+        console.log(data);
         if (!isMounted) return;
 
         setMapData(data);
@@ -198,14 +259,18 @@ export default function ActiveMap({
 
     return () => {
       for (const event of [
-        'TokenMoved', 'TokenSpawned', 'TokenHpChanged', 'TokenRemoved',
-        'GridUpdated', 'SpellCasted', 'SpellDismissed',
+        'TokenMoved',
+        'TokenSpawned',
+        'TokenHpChanged',
+        'TokenRemoved',
+        'GridUpdated',
+        'SpellCasted',
+        'SpellDismissed',
       ]) {
         connection.off(event);
       }
     };
   }, [connection]);
-
 
   // --- 4. TOKEN DRAG & DROP WITH GEOMETRIC PROJECTION ---
 
@@ -224,16 +289,27 @@ export default function ActiveMap({
     const rect = mapContainerRef.current.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) return null;
 
-    const canvasX = ((event.clientX - rect.left) / rect.width) * mapData.widthInPixels;
-    const canvasY = ((event.clientY - rect.top) / rect.height) * mapData.heightInPixels;
-
     const cellSize = grid.cellSizeInPixels || 50;
+    const offsetX = grid.offsetX || 0;
+    const offsetY = grid.offsetY || 0;
+    const paddedWidth = Math.max(
+      mapData.widthInPixels,
+      offsetX + Math.ceil((mapData.widthInPixels - offsetX) / cellSize) * cellSize,
+    );
+    const paddedHeight = Math.max(
+      mapData.heightInPixels,
+      offsetY + Math.ceil((mapData.heightInPixels - offsetY) / cellSize) * cellSize,
+    );
+
+    const canvasX = ((event.clientX - rect.left) / rect.width) * paddedWidth;
+    const canvasY = ((event.clientY - rect.top) / rect.height) * paddedHeight;
+
     const tokenRadius = (cellSize * draggedTokenSize) / 2;
     const dropCenterX = canvasX - tokenRadius;
     const dropCenterY = canvasY - tokenRadius;
 
-    const gridX = Math.round((dropCenterX - (grid.offsetX || 0)) / cellSize);
-    const gridY = Math.round((dropCenterY - (grid.offsetY || 0)) / cellSize);
+    const gridX = Math.round((dropCenterX - offsetX) / cellSize);
+    const gridY = Math.round((dropCenterY - offsetY) / cellSize);
 
     return { gridX, gridY };
   };
@@ -243,6 +319,7 @@ export default function ActiveMap({
       event.preventDefault();
       return;
     }
+    isDraggingRef.current = true;
     setDraggedTokenSize(token.sizeInCells || 1);
     if (token.id) {
       event.dataTransfer.setData('text/plain', token.id);
@@ -250,6 +327,7 @@ export default function ActiveMap({
   };
 
   const handleDragEnd = () => {
+    isDraggingRef.current = false;
     setPreviewCell(null);
     setDraggedTokenSize(1);
   };
@@ -276,6 +354,7 @@ export default function ActiveMap({
 
   const handleDrop = async (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
+    isDraggingRef.current = false;
     setPreviewCell(null);
     setDraggedTokenSize(1);
 
@@ -344,10 +423,10 @@ export default function ActiveMap({
       if (!token || !canMoveToken(token)) return;
 
       setTokens((prev) =>
-        prev.map((token) =>
-          token.id === tokenId
-            ? { ...token, gridX: targetGridX, gridY: targetGridY }
-            : token,
+        prev.map((t) =>
+          t.id === tokenId
+            ? { ...t, gridX: targetGridX, gridY: targetGridY }
+            : t,
         ),
       );
 
@@ -367,6 +446,40 @@ export default function ActiveMap({
     }
   };
 
+  // --- LIVE GRID CELL SIZE ADJUSTER (FOR DM) ---
+  const commitCellSizeChange = async () => {
+    if (!grid) return;
+    const parsed = Number(cellSizeInput);
+    if (Number.isNaN(parsed) || cellSizeInput.trim() === '') {
+      setCellSizeInput(String(grid.cellSizeInPixels || 50));
+      return;
+    }
+
+    const clampedSize = Math.max(20, Math.min(300, Math.round(parsed)));
+    setCellSizeInput(String(clampedSize));
+
+    if (clampedSize === grid.cellSizeInPixels) return;
+
+    setGrid((prev) => (prev ? { ...prev, cellSizeInPixels: clampedSize } : prev));
+
+    try {
+      await putApiGridMapMapId(
+        mapId,
+        {
+          cellSizeInPixels: clampedSize,
+          lineColor: grid.lineColor || '#000000',
+          lineOpacity: grid.lineOpacity ?? 0.4,
+          offsetX: grid.offsetX || 0,
+          offsetY: grid.offsetY || 0,
+        },
+        sessionId ? { sessionId } : undefined,
+      );
+    } catch (err: unknown) {
+      console.error('Failed to update grid size:', err);
+    }
+  };
+
+
   // --- 5. RENDER ---
   if (error) {
     return <div style={{ color: '#ff6b6b', padding: '20px' }}>Error: {error}</div>;
@@ -377,6 +490,17 @@ export default function ActiveMap({
   }
 
   const cellSize = grid?.cellSizeInPixels || 50;
+
+  const offsetX = grid?.offsetX || 0;
+  const offsetY = grid?.offsetY || 0;
+  const rawWidth = mapData.widthInPixels || 1000;
+  const rawHeight = mapData.heightInPixels || 1000;
+
+  const totalColumns = Math.ceil((rawWidth - offsetX) / cellSize);
+  const totalRows = Math.ceil((rawHeight - offsetY) / cellSize);
+
+  const paddedCanvasWidth = Math.max(rawWidth, offsetX + totalColumns * cellSize);
+  const paddedCanvasHeight = Math.max(rawHeight, offsetY + totalRows * cellSize);
 
   return (
     <div
@@ -390,12 +514,12 @@ export default function ActiveMap({
         background: '#121212',
       }}
     >
-
       <TransformWrapper
         initialScale={1}
         minScale={0.2}
         maxScale={4}
         centerOnInit={true}
+        limitToBounds={false} // <-- Prevents top rows from snapping back under the 50px header!
         wheel={{
           step: 0.001,
         }}
@@ -405,7 +529,7 @@ export default function ActiveMap({
       >
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
-            {/* FLOATING ZOOM CONTROLS */}
+            {/* FLOATING ZOOM & GRID CONTROLS */}
             <div
               style={{
                 position: 'absolute',
@@ -413,6 +537,7 @@ export default function ActiveMap({
                 right: 24,
                 zIndex: 100,
                 display: 'flex',
+                alignItems: 'center',
                 gap: '8px',
                 background: 'rgba(20, 20, 20, 0.85)',
                 padding: '6px 10px',
@@ -452,10 +577,59 @@ export default function ActiveMap({
               >
                 Reset
               </button>
+
+              {/* DM LIVE GRID CELL SIZE CONTROL */}
+              {currentParticipant?.isDungeonMaster && grid && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    marginLeft: '4px',
+                    paddingLeft: '8px',
+                    borderLeft: '1px solid rgba(255,255,255,0.2)',
+                    color: '#cbd5e1',
+                    fontSize: '12px',
+                  }}
+                >
+                  <span>Cell:</span>
+                  <input
+                    type="number"
+                    min={20}
+                    max={300}
+                    step={2}
+                    value={cellSizeInput}
+                    onChange={(e) => setCellSizeInput(e.target.value)}
+                    onBlur={() => void commitCellSizeChange()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    style={{
+                      width: '56px',
+                      padding: '4px 6px',
+                      background: '#1e293b',
+                      color: '#fff',
+                      border: '1px solid #475569',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                    }}
+                    title="Grid Cell Size in Pixels (Press Enter or click outside to apply)"
+                  />
+
+                  <span>px</span>
+                </div>
+              )}
             </div>
 
             {/* PAN & ZOOM CANVAS */}
-            <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }}>
+            <TransformComponent
+              wrapperStyle={{
+                width: '100%',
+                height: '100%',
+              }}
+            >
               <div
                 ref={mapContainerRef}
                 onDragOver={handleDragOver}
@@ -468,10 +642,14 @@ export default function ActiveMap({
                 }}
                 style={{
                   position: 'relative',
-                  width: mapData.widthInPixels,
-                  height: mapData.heightInPixels,
-                  backgroundImage: `url(${mapData.imageUrl})`,
-                  backgroundSize: 'cover',
+                  width: paddedCanvasWidth,
+                  height: paddedCanvasHeight,
+                  marginTop: '60px', // <-- Ensures top row starts cleanly below the 50px top bar
+                  backgroundColor: '#ffffff', // <-- White bar for any leftover cell space!
+                  backgroundImage: `url(${getImageUrl(mapData.imageUrl || '')})`,
+                  backgroundSize: `${mapData.widthInPixels}px ${mapData.heightInPixels}px`, // <-- Never stretch the map!
+                  backgroundPosition: 'top left',
+                  backgroundRepeat: 'no-repeat',
                   userSelect: 'none',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.8)',
                   overflow: 'visible',
@@ -501,9 +679,9 @@ export default function ActiveMap({
                         <path
                           d={`M ${cellSize} 0 L 0 0 0 ${cellSize}`}
                           fill="none"
-                          stroke={grid.lineColor || '#ffffff'}
+                          stroke={grid.lineColor || '#000000'}
                           strokeWidth="1"
-                          strokeOpacity={grid.lineOpacity ?? 0.3}
+                          strokeOpacity={grid.lineOpacity ?? 0.4}
                         />
                       </pattern>
                     </defs>
@@ -552,7 +730,8 @@ export default function ActiveMap({
                       borderRadius: '50%',
                       border: '2px dashed #38bdf8',
                       backgroundColor: 'rgba(56, 189, 248, 0.22)',
-                      boxShadow: '0 0 12px rgba(56, 189, 248, 0.5), inset 0 0 8px rgba(56, 189, 248, 0.35)',
+                      boxShadow:
+                        '0 0 12px rgba(56, 189, 248, 0.5), inset 0 0 8px rgba(56, 189, 248, 0.35)',
                       pointerEvents: 'none',
                       zIndex: 50,
                       transition: 'left 0.06s ease-out, top 0.06s ease-out',
@@ -576,7 +755,6 @@ export default function ActiveMap({
                   </div>
                 )}
 
-
                 {/* TOKENS LAYER */}
                 {tokens.map((token, index) => {
                   if (!token.isVisibleToPlayers && !currentParticipant?.isDungeonMaster) {
@@ -598,19 +776,19 @@ export default function ActiveMap({
                     Boolean(token.id) &&
                     !failedTokenImages.has(token.id!);
 
-                  //color circle around the token calc
+                  // Color circle around the token calc
                   const hpPercent = token.maxHp
                     ? Math.max(0, Math.min(100, ((token.currentHp ?? 0) / token.maxHp) * 100))
                     : 0;
                   const hpColor = hpPercent > 30 ? '#2dc653' : '#d90429';
-                  const ringWidth = Math.max(3, Math.round(size * 0.02)); // ring thickness in px
-                  const hpAngle = hpPercent * 3.6; // 0-360deg
+                  const ringWidth = Math.max(3, Math.round(size * 0.02));
+                  const hpAngle = hpPercent * 3.6;
 
-                   const stackIndex = tokens
-                  .slice(0, index)
-                  .filter((t) => t.gridX === token.gridX && t.gridY === token.gridY).length;
+                  const stackIndex = tokens
+                    .slice(0, index)
+                    .filter((t) => t.gridX === token.gridX && t.gridY === token.gridY).length;
 
-                  const baseZ = 10 + index;
+                  const baseZ = 10 + index + stackIndex;
 
                   return (
                     <div
@@ -653,7 +831,6 @@ export default function ActiveMap({
                         userSelect: 'none',
                       }}
                     >
-                      {/* Initials Placeholder when token has no image */}
                       {/* Token Image */}
                       {hasImage && tokenImageUrl && (
                         <img
@@ -661,7 +838,7 @@ export default function ActiveMap({
                           alt={tokenName}
                           draggable={false}
                           onError={() => {
-                            setFailedTokenImages(prev => new Set(prev).add(token.id!));
+                            setFailedTokenImages((prev) => new Set(prev).add(token.id!));
                           }}
                           style={{
                             position: 'absolute',
@@ -676,7 +853,7 @@ export default function ActiveMap({
                         />
                       )}
 
-                      {/* Initialen mittig, nur ohne Bild (absolut, stört das Flex-Layout nicht) */}
+                      {/* Initials Placeholder when token has no image */}
                       {!hasImage && (
                         <span
                           style={{
@@ -696,7 +873,7 @@ export default function ActiveMap({
                         </span>
                       )}
 
-                      {/* Name unten, immer sichtbar (auch mit Bild) */}
+                      {/* Name banner */}
                       <div
                         style={{
                           position: 'relative',
@@ -747,24 +924,38 @@ export default function ActiveMap({
         )}
       </TransformWrapper>
 
-      {/* GM TOKENBOX DRAWER */}
+      {/* GM TOKENBOX DRAWER WRAPPER (Zero-width anchor at right edge so there is NO deadzone when closed!) */}
       {currentParticipant?.isDungeonMaster && (
-        <TokenBox
-          sessionId={sessionId}
-          selectedToken={selectedToken}
-          onCloseInspector={() => setSelectedToken(undefined)}
-          onHpChanged={(id: string, newHp: number) => {
-            setTokens((prev) =>
-              prev.map((token) =>
-                token.id === id ? { ...token, currentHp: newHp } : token,
-              ),
-            );
+        <div
+          ref={tokenBoxWrapperRef}
+          style={{
+            position: 'absolute',
+            top: '50px', // Starts below the 50px top bar
+            right: 0,
+            width: 0, // <-- Zero width so it NEVER blocks the map or zoom controls when closed!
+            height: 'calc(100% - 50px)',
+            overflow: 'visible',
+            zIndex: 200,
           }}
-          onTokenDeleted={(id: string) => {
-            setTokens((prev) => prev.filter((token) => token.id !== id));
-            setSelectedToken(undefined);
-          }}
-        />
+        >
+          <TokenBox
+            key={tokenBoxResetKey}
+            sessionId={sessionId}
+            selectedToken={selectedToken}
+            onCloseInspector={() => setSelectedToken(undefined)}
+            onHpChanged={(id: string, newHp: number) => {
+              setTokens((prev) =>
+                prev.map((token) =>
+                  token.id === id ? { ...token, currentHp: newHp } : token,
+                ),
+              );
+            }}
+            onTokenDeleted={(id: string) => {
+              setTokens((prev) => prev.filter((token) => token.id !== id));
+              setSelectedToken(undefined);
+            }}
+          />
+        </div>
       )}
     </div>
   );

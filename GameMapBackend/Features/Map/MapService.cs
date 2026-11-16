@@ -143,10 +143,10 @@ public class MapService : IMapService
         );
     }
 
-    public async Task<MapDetailDto> CreateMapAsync(CreateMapDto dto, IFormFile imageFile)
+        public async Task<MapDetailDto> CreateMapAsync(CreateMapDto dto, IFormFile imageFile)
     {
-        const int targetWidth = 1920;
-        const int targetHeight = 1080;
+        const int max8KWidth = 7680;
+        const int max8KHeight = 4320;
 
         var uploadsFolder = Path.Combine(_env.WebRootPath ?? "wwwroot", "maps");
         if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
@@ -155,17 +155,24 @@ public class MapService : IMapService
         var uniqueFileName = $"{Guid.NewGuid()}{fileExtension}";
         var filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
-        // Load the uploaded image, scale down if > 1920x1080, and add black bars if < 1920x1080
+        int actualWidth;
+        int actualHeight;
+
         await using (var inputStream = imageFile.OpenReadStream())
         using (var image = await Image.LoadAsync(inputStream))
         {
-            image.Mutate(ctx => ctx.Resize(new ResizeOptions
+            // Only scale down if the image exceeds 8K (7680x4320), preserving aspect ratio
+            if (image.Width > max8KWidth || image.Height > max8KHeight)
             {
-                Size = new Size(targetWidth, targetHeight),
-                Mode = ResizeMode.BoxPad, // Scales down if too big; adds black bars without stretching if too small
-                Position = AnchorPositionMode.Center,
-                PadColor = Color.Black
-            }));
+                image.Mutate(ctx => ctx.Resize(new ResizeOptions
+                {
+                    Size = new Size(max8KWidth, max8KHeight),
+                    Mode = ResizeMode.Max // Scales down proportionally without cropping or bars
+                }));
+            }
+
+            actualWidth = image.Width;
+            actualHeight = image.Height;
 
             await image.SaveAsync(filePath);
         }
@@ -176,16 +183,17 @@ public class MapService : IMapService
         {
             Title = dto.Title,
             ImageUrl = $"/maps/{uniqueFileName}",
-            WidthInPixels = targetWidth,
-            HeightInPixels = targetHeight
+            WidthInPixels = actualWidth,
+            HeightInPixels = actualHeight
         };
 
         var grid = new GridEntity
         {
             MapId = map.Id,
             CellSizeInPixels = cellSize,
-            Columns = targetWidth / cellSize,
-            Rows = targetHeight / cellSize,
+            // Round UP so any cut-off edge still gets a complete grid cell!
+            Columns = (int)Math.Ceiling((double)actualWidth / cellSize),
+            Rows = (int)Math.Ceiling((double)actualHeight / cellSize),
             LineColor = "#000000",
             LineOpacity = 0.4,
             OffsetX = 0,
@@ -199,6 +207,7 @@ public class MapService : IMapService
 
         return (await GetMapByIdAsync(map.Id))!;
     }
+
 
 
     public async Task<bool> DeleteMapAsync(Guid id)
