@@ -54,6 +54,12 @@ function getTokenInitials(name = 'T'): string {
   return name.slice(0, 2).toUpperCase();
 }
 
+// 1x1 transparent pixel to hide the browser's native translucent drag ghost image
+const emptyDragImage = new Image();
+emptyDragImage.src =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+
 export default function ActiveMap({
   sessionId,
   mapId,
@@ -92,6 +98,8 @@ export default function ActiveMap({
   // Helper for Token Preview
   const handleGlobalDragStartCapture = (event: DragEvent<HTMLDivElement>) => {
     isDraggingRef.current = true;
+    // Disable default browser Image Preview
+    event.dataTransfer.setDragImage(emptyDragImage, 0, 0);
     const target = event.target as HTMLElement;
     // If it's an existing board token, handleDragStart already sets its size
     if (target.classList.contains('vtt-token')) return;
@@ -321,10 +329,12 @@ export default function ActiveMap({
     }
     isDraggingRef.current = true;
     setDraggedTokenSize(token.sizeInCells || 1);
+    event.dataTransfer.setDragImage(emptyDragImage, 0, 0);
     if (token.id) {
-      event.dataTransfer.setData('text/plain', token.id);
+      event.dataTransfer.setData('application/vtt-move-token', token.id);
     }
   };
+
 
   const handleDragEnd = () => {
     isDraggingRef.current = false;
@@ -417,7 +427,7 @@ export default function ActiveMap({
     }
 
     // --- CASE C: Moving an Existing Board Token ---
-    const tokenId = event.dataTransfer.getData('text/plain');
+    const tokenId = event.dataTransfer.getData('application/vtt-move-token');
     if (tokenId) {
       const token = tokens.find((candidate) => candidate.id === tokenId);
       if (!token || !canMoveToken(token)) return;
