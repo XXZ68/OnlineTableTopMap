@@ -54,6 +54,10 @@ namespace GameMapBackend.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PasswordHash")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("RaceIndex")
                         .HasColumnType("TEXT");
 

@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
+using GameMapBackend.Hubs;
 
 namespace GameMapBackend.Features.Character;
 
@@ -10,10 +12,14 @@ namespace GameMapBackend.Features.Character;
 public class CharacterController : ControllerBase
 {
     private readonly ICharacterService _characterService;
+    private readonly IHubContext<MapHub, IMapClient> _hubContext;
 
-    public CharacterController(ICharacterService characterService)
+    public CharacterController(
+        ICharacterService characterService,
+        IHubContext<MapHub, IMapClient> hubContext)
     {
         _characterService = characterService;
+        _hubContext = hubContext;
     }
 
     /// <summary>
@@ -56,6 +62,38 @@ public class CharacterController : ControllerBase
     {
         var updated = await _characterService.UpdateCharacterSheetAsync(id, dto);
         return updated == null ? NotFound() : Ok(updated);
+    }
+
+    /// <summary>
+    /// Updates the current HP of a character owned by the specified player.
+    /// </summary>
+    [HttpPatch("{id:guid}/hp")]
+    public async Task<ActionResult<CharacterDto>> UpdateHp(
+        Guid id,
+        [FromQuery] string playerId,
+        [FromBody] UpdateCharacterHpDto dto)
+    {
+        var updated = await _characterService.UpdateCurrentHpAsync(id, playerId, dto.NewHp);
+        if (updated == null) return NotFound();
+
+        await _hubContext.Clients.Group(updated.GameSessionId.ToString()).CharacterUpdated(updated);
+        return Ok(updated);
+    }
+
+    /// <summary>
+    /// Levels up a character and increases its HP by a server-rolled class Hit Die.
+    /// </summary>
+    [HttpPost("{id:guid}/level-up")]
+    public async Task<ActionResult<LevelUpCharacterResult>> LevelUp(
+        Guid id,
+        [FromQuery] string playerId)
+    {
+        var result = await _characterService.LevelUpAsync(id, playerId);
+        if (result == null) return NotFound("Character not found, not owned by player, or already at level 20.");
+
+        await _hubContext.Clients.Group(result.Character.GameSessionId.ToString())
+            .CharacterUpdated(result.Character);
+        return Ok(result);
     }
 
     /// <summary>

@@ -75,7 +75,16 @@ public class GameSessionController : ControllerBase
     [HttpPost("join")]
     public async Task<ActionResult<GameSessionDto>> Join([FromBody] JoinSessionDto dto)
     {
-        var session = await _sessionService.JoinSessionAsync(dto);
+        GameSessionDto? session;
+        try
+        {
+            session = await _sessionService.JoinSessionAsync(dto);
+        }
+        catch (CharacterPasswordException)
+        {
+            return Unauthorized("Charakter oder Passwort ungültig.");
+        }
+
         if (session == null) return NotFound("Ungültiger Join-Code.");
 
         await _hubContext.Clients.Group(session.Id.ToString()).PlayerJoined(dto.PlayerId, dto.PlayerName);
