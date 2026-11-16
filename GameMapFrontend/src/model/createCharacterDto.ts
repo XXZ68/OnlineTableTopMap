@@ -21,4 +21,5 @@ export interface CreateCharacterDto {
   maxHp?: number;
   armorClass?: number;
   speedInFeet?: number;
+  characterPassword?: string;
 }

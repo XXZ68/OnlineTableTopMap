@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
 using GameMapBackend.Data;
 using GameMapBackend.Features.Map;
 using GameMapBackend.Features.Grid;
+using GameMapBackend.Features.Character;
 
 namespace GameMapBackend.Features.GameSession;
 
@@ -18,6 +20,7 @@ public interface IGameSessionService
 public class GameSessionService : IGameSessionService
 {
     private readonly AppDbContext _context;
+    private readonly PasswordHasher<CharacterEntity> _passwordHasher = new();
 
     public GameSessionService(AppDbContext context)
     {
@@ -98,6 +101,21 @@ public class GameSessionService : IGameSessionService
 
         if (session == null)
             return null;
+
+        if (dto.CharacterId.HasValue)
+        {
+            var character = await _context.Characters.FirstOrDefaultAsync(candidate =>
+                candidate.Id == dto.CharacterId.Value && candidate.GameSessionId == session.Id);
+
+            if (character?.PasswordHash == null || string.IsNullOrEmpty(dto.CharacterPassword) ||
+                _passwordHasher.VerifyHashedPassword(
+                    character,
+                    character.PasswordHash,
+                    dto.CharacterPassword) == PasswordVerificationResult.Failed)
+            {
+                throw new CharacterPasswordException();
+            }
+        }
 
         var existing = session.Participants
             .FirstOrDefault(p => p.PlayerId == dto.PlayerId);
@@ -254,3 +272,5 @@ public class GameSessionService : IGameSessionService
         )).ToList()
     );
 }
+
+public sealed class CharacterPasswordException : Exception { }

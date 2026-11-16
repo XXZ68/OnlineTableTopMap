@@ -27,5 +27,6 @@ public record JoinSessionDto(
     string JoinCode,
     string PlayerId,
     string PlayerName,
-    Guid? CharacterId = null
+    Guid? CharacterId = null,
+    string? CharacterPassword = null
 );

@@ -15,4 +15,6 @@ export interface JoinSessionDto {
   playerName?: string | null;
   /** @nullable */
   characterId?: string | null;
+  /** @nullable */
+  characterPassword?: string | null;
 }

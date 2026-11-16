@@ -22,6 +22,9 @@ public class CharacterEntity
     [MaxLength(100)]
     public string OwnerPlayerId { get; set; } = string.Empty;
 
+    [MaxLength(1000)]
+    public string? PasswordHash { get; set; }
+
     public string? ClassIndex { get; set; }
     public string? RaceIndex { get; set; }
 

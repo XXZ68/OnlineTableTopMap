@@ -4,29 +4,27 @@ import {
   useRef,
   type CSSProperties,
   type DragEvent,
-} from 'react';
-import type { HubConnection } from '@microsoft/signalr';
-import {
-  TransformWrapper,
-  TransformComponent,
-} from 'react-zoom-pan-pinch';
-import TokenBox from './TokenBox';
+} from "react";
+import type { HubConnection } from "@microsoft/signalr";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import TokenBox from "./TokenBox";
 import {
   getApiMapId,
   postApiTokenMapMapIdPlaceCharacter,
   postApiTokenMapMapIdSpawnMonster,
   putApiGridMapMapId,
-} from '../api';
+} from "../api";
 import {
   ActiveSpellDto,
+  CharacterDto,
   GridDto,
   MapDetailDto,
   MapTokenDto,
   ParticipantDto,
   SpellCastEventDto,
-} from '../model';
+} from "../model";
 
-import { getImageUrl } from '../utils/imageUrl';
+import { getImageUrl } from "../utils/imageUrl";
 
 type ActiveMapProps = {
   sessionId: string;
@@ -36,7 +34,7 @@ type ActiveMapProps = {
 };
 
 // Generates a stable hue from the token name so similar tokens share a distinct theme
-function getTokenBackgroundColor(name = 'Token'): string {
+function getTokenBackgroundColor(name = "Token"): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -46,7 +44,7 @@ function getTokenBackgroundColor(name = 'Token'): string {
 }
 
 // Extracts 1-2 character initials (e.g. "Goblin Boss" -> "GB", "Dragon" -> "DR")
-function getTokenInitials(name = 'T'): string {
+function getTokenInitials(name = "T"): string {
   const parts = name.trim().split(/\s+/);
   if (parts.length > 1 && parts[0] && parts[1]) {
     return (parts[0][0] + parts[1][0]).toUpperCase();
@@ -57,8 +55,7 @@ function getTokenInitials(name = 'T'): string {
 // 1x1 transparent pixel to hide the browser's native translucent drag ghost image
 const emptyDragImage = new Image();
 emptyDragImage.src =
-  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 export default function ActiveMap({
   sessionId,
@@ -75,7 +72,10 @@ export default function ActiveMap({
   const [selectedToken, setSelectedToken] = useState<MapTokenDto>();
 
   // Drag-and-drop landing preview state
-  const [previewCell, setPreviewCell] = useState<{ gridX: number; gridY: number } | null>(null);
+  const [previewCell, setPreviewCell] = useState<{
+    gridX: number;
+    gridY: number;
+  } | null>(null);
   const [draggedTokenSize, setDraggedTokenSize] = useState<number>(1);
 
   // Tracks whether user interacted with TokenBox so clicking outside can close it cleanly
@@ -102,22 +102,22 @@ export default function ActiveMap({
     event.dataTransfer.setDragImage(emptyDragImage, 0, 0);
     const target = event.target as HTMLElement;
     // If it's an existing board token, handleDragStart already sets its size
-    if (target.classList.contains('vtt-token')) return;
+    if (target.classList.contains("vtt-token")) return;
 
     // Otherwise, it's being dragged from TokenBox! Read the card text:
-    const text = target.innerText?.toLowerCase() || '';
-    if (text.includes('size: gargantuan')) {
+    const text = target.innerText?.toLowerCase() || "";
+    if (text.includes("size: gargantuan")) {
       setDraggedTokenSize(4);
-    } else if (text.includes('size: huge')) {
+    } else if (text.includes("size: huge")) {
       setDraggedTokenSize(3);
-    } else if (text.includes('size: large')) {
+    } else if (text.includes("size: large")) {
       setDraggedTokenSize(2);
     } else {
       setDraggedTokenSize(1);
     }
   };
 
-  const [cellSizeInput, setCellSizeInput] = useState<string>('50');
+  const [cellSizeInput, setCellSizeInput] = useState<string>("50");
 
   useEffect(() => {
     if (grid?.cellSizeInPixels) {
@@ -140,7 +140,7 @@ export default function ActiveMap({
       }
 
       // Ignore clicks on board tokens (since clicking a token selects/drags it)
-      if (target.closest('.vtt-token')) {
+      if (target.closest(".vtt-token")) {
         return;
       }
 
@@ -152,9 +152,9 @@ export default function ActiveMap({
       }
     };
 
-    window.addEventListener('pointerdown', handlePointerDownOutside);
+    window.addEventListener("pointerdown", handlePointerDownOutside);
     return () => {
-      window.removeEventListener('pointerdown', handlePointerDownOutside);
+      window.removeEventListener("pointerdown", handlePointerDownOutside);
     };
   }, []);
 
@@ -177,13 +177,9 @@ export default function ActiveMap({
       } catch (err: unknown) {
         if (!isMounted) return;
 
-        console.error('Failed to load map:', err);
+        console.error("Failed to load map:", err);
 
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'Failed to load map.',
-        );
+        setError(err instanceof Error ? err.message : "Failed to load map.");
       }
     };
 
@@ -199,7 +195,7 @@ export default function ActiveMap({
     if (!connection) return;
 
     connection.on(
-      'TokenMoved',
+      "TokenMoved",
       (tokenId: string, newGridX: number, newGridY: number) => {
         setTokens((prev) =>
           prev.map((token) =>
@@ -216,13 +212,13 @@ export default function ActiveMap({
       },
     );
 
-    connection.on('TokenSpawned', (newToken: MapTokenDto) => {
+    connection.on("TokenSpawned", (newToken: MapTokenDto) => {
       setTokens((prev) =>
         prev.some((t) => t.id === newToken.id) ? prev : [...prev, newToken],
       );
     });
 
-    connection.on('TokenHpChanged', (tokenId: string, newHp: number) => {
+    connection.on("TokenHpChanged", (tokenId: string, newHp: number) => {
       setTokens((prev) =>
         prev.map((token) =>
           token.id === tokenId ? { ...token, currentHp: newHp } : token,
@@ -233,16 +229,41 @@ export default function ActiveMap({
       );
     });
 
-    connection.on('TokenRemoved', (tokenId: string) => {
-      setTokens((prev) => prev.filter((token) => token.id !== tokenId));
-      setSelectedToken((prev) => (prev && prev.id === tokenId ? undefined : prev));
+    connection.on("CharacterUpdated", (character: CharacterDto) => {
+      setTokens((prev) =>
+        prev.map((token) =>
+          token.characterId === character.id
+            ? {
+                ...token,
+                currentHp: character.currentHp,
+                maxHp: character.maxHp,
+              }
+            : token,
+        ),
+      );
+      setSelectedToken((prev) =>
+        prev?.characterId === character.id
+          ? {
+              ...prev,
+              currentHp: character.currentHp,
+              maxHp: character.maxHp,
+            }
+          : prev,
+      );
     });
 
-    connection.on('GridUpdated', (updatedGrid: GridDto) => {
+    connection.on("TokenRemoved", (tokenId: string) => {
+      setTokens((prev) => prev.filter((token) => token.id !== tokenId));
+      setSelectedToken((prev) =>
+        prev && prev.id === tokenId ? undefined : prev,
+      );
+    });
+
+    connection.on("GridUpdated", (updatedGrid: GridDto) => {
       setGrid(updatedGrid);
     });
 
-    connection.on('SpellCasted', (spellEvent: SpellCastEventDto) => {
+    connection.on("SpellCasted", (spellEvent: SpellCastEventDto) => {
       setActiveSpells((prev) => [
         ...prev,
         {
@@ -259,21 +280,19 @@ export default function ActiveMap({
       ]);
     });
 
-    connection.on('SpellDismissed', (spellId: string) => {
-      setActiveSpells((prev) =>
-        prev.filter((spell) => spell.id !== spellId),
-      );
+    connection.on("SpellDismissed", (spellId: string) => {
+      setActiveSpells((prev) => prev.filter((spell) => spell.id !== spellId));
     });
 
     return () => {
       for (const event of [
-        'TokenMoved',
-        'TokenSpawned',
-        'TokenHpChanged',
-        'TokenRemoved',
-        'GridUpdated',
-        'SpellCasted',
-        'SpellDismissed',
+        "TokenMoved",
+        "TokenSpawned",
+        "TokenHpChanged",
+        "TokenRemoved",
+        "GridUpdated",
+        "SpellCasted",
+        "SpellDismissed",
       ]) {
         connection.off(event);
       }
@@ -284,29 +303,48 @@ export default function ActiveMap({
 
   const canMoveToken = (token: MapTokenDto) => {
     if (currentParticipant?.isDungeonMaster) return true;
-    if (token.isLocked || !token.isVisibleToPlayers || !currentParticipant.selectedCharacterId) return false;
+    if (
+      token.isLocked ||
+      !token.isVisibleToPlayers ||
+      !currentParticipant.selectedCharacterId
+    )
+      return false;
     return token.characterId === currentParticipant?.selectedCharacterId;
   };
 
   // Shared helper to convert mouse event coordinates into snapped (gridX, gridY)
-  const getSnappedGridCoords = (event: DragEvent<HTMLDivElement>): { gridX: number; gridY: number } | null => {
-    if (!grid || !mapContainerRef.current || !mapData?.widthInPixels || !mapData?.heightInPixels) {
+  const getSnappedGridCoords = (
+    event: DragEvent<HTMLDivElement>,
+  ): { gridX: number; gridY: number } | null => {
+    if (
+      !grid ||
+      !mapContainerRef.current ||
+      !mapData?.widthInPixels ||
+      !mapData?.heightInPixels
+    ) {
       return null;
     }
 
     const rect = mapContainerRef.current.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) return null;
 
+    const canvasX =
+      ((event.clientX - rect.left) / rect.width) * mapData.widthInPixels;
+    const canvasY =
+      ((event.clientY - rect.top) / rect.height) * mapData.heightInPixels;
+
     const cellSize = grid.cellSizeInPixels || 50;
     const offsetX = grid.offsetX || 0;
     const offsetY = grid.offsetY || 0;
     const paddedWidth = Math.max(
       mapData.widthInPixels,
-      offsetX + Math.ceil((mapData.widthInPixels - offsetX) / cellSize) * cellSize,
+      offsetX +
+        Math.ceil((mapData.widthInPixels - offsetX) / cellSize) * cellSize,
     );
     const paddedHeight = Math.max(
       mapData.heightInPixels,
-      offsetY + Math.ceil((mapData.heightInPixels - offsetY) / cellSize) * cellSize,
+      offsetY +
+        Math.ceil((mapData.heightInPixels - offsetY) / cellSize) * cellSize,
     );
 
     const canvasX = ((event.clientX - rect.left) / rect.width) * paddedWidth;
@@ -322,7 +360,10 @@ export default function ActiveMap({
     return { gridX, gridY };
   };
 
-  const handleDragStart = (event: DragEvent<HTMLDivElement>, token: MapTokenDto) => {
+  const handleDragStart = (
+    event: DragEvent<HTMLDivElement>,
+    token: MapTokenDto,
+  ) => {
     if (!canMoveToken(token)) {
       event.preventDefault();
       return;
@@ -331,10 +372,9 @@ export default function ActiveMap({
     setDraggedTokenSize(token.sizeInCells || 1);
     event.dataTransfer.setDragImage(emptyDragImage, 0, 0);
     if (token.id) {
-      event.dataTransfer.setData('application/vtt-move-token', token.id);
+      event.dataTransfer.setData("text/plain", token.id);
     }
   };
-
 
   const handleDragEnd = () => {
     isDraggingRef.current = false;
@@ -373,7 +413,9 @@ export default function ActiveMap({
     const { gridX: targetGridX, gridY: targetGridY } = coords;
 
     // --- CASE A: Spawning a Monster from TokenBox ---
-    const monsterSpawnData = event.dataTransfer.getData('application/vtt-spawn-monster');
+    const monsterSpawnData = event.dataTransfer.getData(
+      "application/vtt-spawn-monster",
+    );
     if (monsterSpawnData) {
       if (!currentParticipant.isDungeonMaster) return;
       const monster = JSON.parse(monsterSpawnData) as {
@@ -396,16 +438,20 @@ export default function ActiveMap({
           prev.some((t) => t.id === res.data.id) ? prev : [...prev, res.data],
         );
       } catch (err: unknown) {
-        console.error('Failed to spawn monster:', err);
+        console.error("Failed to spawn monster:", err);
       }
       return;
     }
 
     // --- CASE B: Placing a Character from TokenBox ---
-    const characterPlaceData = event.dataTransfer.getData('application/vtt-place-character');
+    const characterPlaceData = event.dataTransfer.getData(
+      "application/vtt-place-character",
+    );
     if (characterPlaceData && sessionId) {
       if (!currentParticipant.isDungeonMaster) return;
-      const character = JSON.parse(characterPlaceData) as { characterId: string };
+      const character = JSON.parse(characterPlaceData) as {
+        characterId: string;
+      };
       try {
         const res = await postApiTokenMapMapIdPlaceCharacter(
           mapId,
@@ -421,13 +467,13 @@ export default function ActiveMap({
           prev.some((t) => t.id === res.data.id) ? prev : [...prev, res.data],
         );
       } catch (err: unknown) {
-        console.error('Failed to place character:', err);
+        console.error("Failed to place character:", err);
       }
       return;
     }
 
     // --- CASE C: Moving an Existing Board Token ---
-    const tokenId = event.dataTransfer.getData('application/vtt-move-token');
+    const tokenId = event.dataTransfer.getData("text/plain");
     if (tokenId) {
       const token = tokens.find((candidate) => candidate.id === tokenId);
       if (!token || !canMoveToken(token)) return;
@@ -443,14 +489,14 @@ export default function ActiveMap({
       if (connection) {
         try {
           await connection.invoke(
-            'MoveToken',
+            "MoveToken",
             sessionId,
             tokenId,
             targetGridX,
             targetGridY,
           );
         } catch (err: unknown) {
-          console.error('Failed to sync token move:', err);
+          console.error("Failed to sync token move:", err);
         }
       }
     }
@@ -460,7 +506,7 @@ export default function ActiveMap({
   const commitCellSizeChange = async () => {
     if (!grid) return;
     const parsed = Number(cellSizeInput);
-    if (Number.isNaN(parsed) || cellSizeInput.trim() === '') {
+    if (Number.isNaN(parsed) || cellSizeInput.trim() === "") {
       setCellSizeInput(String(grid.cellSizeInPixels || 50));
       return;
     }
@@ -470,14 +516,16 @@ export default function ActiveMap({
 
     if (clampedSize === grid.cellSizeInPixels) return;
 
-    setGrid((prev) => (prev ? { ...prev, cellSizeInPixels: clampedSize } : prev));
+    setGrid((prev) =>
+      prev ? { ...prev, cellSizeInPixels: clampedSize } : prev,
+    );
 
     try {
       await putApiGridMapMapId(
         mapId,
         {
           cellSizeInPixels: clampedSize,
-          lineColor: grid.lineColor || '#000000',
+          lineColor: grid.lineColor || "#000000",
           lineOpacity: grid.lineOpacity ?? 0.4,
           offsetX: grid.offsetX || 0,
           offsetY: grid.offsetY || 0,
@@ -485,18 +533,23 @@ export default function ActiveMap({
         sessionId ? { sessionId } : undefined,
       );
     } catch (err: unknown) {
-      console.error('Failed to update grid size:', err);
+      console.error("Failed to update grid size:", err);
     }
   };
 
-
   // --- 5. RENDER ---
   if (error) {
-    return <div style={{ color: '#ff6b6b', padding: '20px' }}>Error: {error}</div>;
+    return (
+      <div style={{ color: "#ff6b6b", padding: "20px" }}>Error: {error}</div>
+    );
   }
 
   if (isLoading) {
-    return <div style={{ color: '#fff', padding: '20px' }}>Loading Battle Map...</div>;
+    return (
+      <div style={{ color: "#fff", padding: "20px" }}>
+        Loading Battle Map...
+      </div>
+    );
   }
 
   const cellSize = grid?.cellSizeInPixels || 50;
@@ -509,19 +562,25 @@ export default function ActiveMap({
   const totalColumns = Math.ceil((rawWidth - offsetX) / cellSize);
   const totalRows = Math.ceil((rawHeight - offsetY) / cellSize);
 
-  const paddedCanvasWidth = Math.max(rawWidth, offsetX + totalColumns * cellSize);
-  const paddedCanvasHeight = Math.max(rawHeight, offsetY + totalRows * cellSize);
+  const paddedCanvasWidth = Math.max(
+    rawWidth,
+    offsetX + totalColumns * cellSize,
+  );
+  const paddedCanvasHeight = Math.max(
+    rawHeight,
+    offsetY + totalRows * cellSize,
+  );
 
   return (
     <div
       onDragStartCapture={handleGlobalDragStartCapture}
       onDragEndCapture={handleDragEnd}
       style={{
-        position: 'relative',
-        width: '100%',
-        height: '100vh',
-        overflow: 'hidden',
-        background: '#121212',
+        position: "relative",
+        width: "100%",
+        height: "100vh",
+        overflow: "hidden",
+        background: "#121212",
       }}
     >
       <TransformWrapper
@@ -534,7 +593,7 @@ export default function ActiveMap({
           step: 0.001,
         }}
         panning={{
-          excluded: ['vtt-token'],
+          excluded: ["vtt-token"],
         }}
       >
         {({ zoomIn, zoomOut, resetTransform }) => (
@@ -542,18 +601,17 @@ export default function ActiveMap({
             {/* FLOATING ZOOM & GRID CONTROLS */}
             <div
               style={{
-                position: 'absolute',
+                position: "absolute",
                 bottom: 24,
                 right: 24,
                 zIndex: 100,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: 'rgba(20, 20, 20, 0.85)',
-                padding: '6px 10px',
-                borderRadius: '8px',
-                border: '1px solid rgba(255,255,255,0.15)',
-                backdropFilter: 'blur(6px)',
+                display: "flex",
+                gap: "8px",
+                background: "rgba(20, 20, 20, 0.85)",
+                padding: "6px 10px",
+                borderRadius: "8px",
+                border: "1px solid rgba(255,255,255,0.15)",
+                backdropFilter: "blur(6px)",
               }}
             >
               <button
@@ -579,9 +637,9 @@ export default function ActiveMap({
                 onClick={() => resetTransform()}
                 style={{
                   ...buttonStyle,
-                  width: 'auto',
-                  padding: '0 10px',
-                  fontSize: '12px',
+                  width: "auto",
+                  padding: "0 10px",
+                  fontSize: "12px",
                 }}
                 title="Reset View"
               >
@@ -592,14 +650,14 @@ export default function ActiveMap({
               {currentParticipant?.isDungeonMaster && grid && (
                 <div
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    marginLeft: '4px',
-                    paddingLeft: '8px',
-                    borderLeft: '1px solid rgba(255,255,255,0.2)',
-                    color: '#cbd5e1',
-                    fontSize: '12px',
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    marginLeft: "4px",
+                    paddingLeft: "8px",
+                    borderLeft: "1px solid rgba(255,255,255,0.2)",
+                    color: "#cbd5e1",
+                    fontSize: "12px",
                   }}
                 >
                   <span>Cell:</span>
@@ -612,18 +670,18 @@ export default function ActiveMap({
                     onChange={(e) => setCellSizeInput(e.target.value)}
                     onBlur={() => void commitCellSizeChange()}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
+                      if (e.key === "Enter") {
                         e.currentTarget.blur();
                       }
                     }}
                     style={{
-                      width: '56px',
-                      padding: '4px 6px',
-                      background: '#1e293b',
-                      color: '#fff',
-                      border: '1px solid #475569',
-                      borderRadius: '4px',
-                      fontSize: '12px',
+                      width: "56px",
+                      padding: "4px 6px",
+                      background: "#1e293b",
+                      color: "#fff",
+                      border: "1px solid #475569",
+                      borderRadius: "4px",
+                      fontSize: "12px",
                     }}
                     title="Grid Cell Size in Pixels (Press Enter or click outside to apply)"
                   />
@@ -635,10 +693,7 @@ export default function ActiveMap({
 
             {/* PAN & ZOOM CANVAS */}
             <TransformComponent
-              wrapperStyle={{
-                width: '100%',
-                height: '100%',
-              }}
+              wrapperStyle={{ width: "100%", height: "100%" }}
             >
               <div
                 ref={mapContainerRef}
@@ -651,30 +706,26 @@ export default function ActiveMap({
                   }
                 }}
                 style={{
-                  position: 'relative',
-                  width: paddedCanvasWidth,
-                  height: paddedCanvasHeight,
-                  marginTop: '60px', // <-- Ensures top row starts cleanly below the 50px top bar
-                  backgroundColor: '#ffffff', // <-- White bar for any leftover cell space!
-                  backgroundImage: `url(${getImageUrl(mapData.imageUrl || '')})`,
-                  backgroundSize: `${mapData.widthInPixels}px ${mapData.heightInPixels}px`, // <-- Never stretch the map!
-                  backgroundPosition: 'top left',
-                  backgroundRepeat: 'no-repeat',
-                  userSelect: 'none',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.8)',
-                  overflow: 'visible',
+                  position: "relative",
+                  width: mapData.widthInPixels,
+                  height: mapData.heightInPixels,
+                  backgroundImage: `url(${mapData.imageUrl})`,
+                  backgroundSize: "cover",
+                  userSelect: "none",
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.8)",
+                  overflow: "visible",
                 }}
               >
                 {/* SVG GRID OVERLAY */}
                 {grid && (
                   <svg
                     style={{
-                      position: 'absolute',
+                      position: "absolute",
                       top: 0,
                       left: 0,
-                      width: '100%',
-                      height: '100%',
-                      pointerEvents: 'none',
+                      width: "100%",
+                      height: "100%",
+                      pointerEvents: "none",
                     }}
                   >
                     <defs>
@@ -689,7 +740,7 @@ export default function ActiveMap({
                         <path
                           d={`M ${cellSize} 0 L 0 0 0 ${cellSize}`}
                           fill="none"
-                          stroke={grid.lineColor || '#000000'}
+                          stroke={grid.lineColor || "#ffffff"}
                           strokeWidth="1"
                           strokeOpacity={grid.lineOpacity ?? 0.4}
                         />
@@ -718,9 +769,9 @@ export default function ActiveMap({
                           cx={originX}
                           cy={originY}
                           r={radiusPx}
-                          fill={spell.colorHex || '#ff0055'}
+                          fill={spell.colorHex || "#ff0055"}
                           fillOpacity={0.3}
-                          stroke={spell.colorHex || '#ff0055'}
+                          stroke={spell.colorHex || "#ff0055"}
                           strokeWidth={2}
                         />
                       );
@@ -732,32 +783,32 @@ export default function ActiveMap({
                 {previewCell && grid && (
                   <div
                     style={{
-                      position: 'absolute',
+                      position: "absolute",
                       left: `${(grid.offsetX || 0) + previewCell.gridX * cellSize}px`,
                       top: `${(grid.offsetY || 0) + previewCell.gridY * cellSize}px`,
                       width: `${draggedTokenSize * cellSize}px`,
                       height: `${draggedTokenSize * cellSize}px`,
-                      borderRadius: '50%',
-                      border: '2px dashed #38bdf8',
-                      backgroundColor: 'rgba(56, 189, 248, 0.22)',
+                      borderRadius: "50%",
+                      border: "2px dashed #38bdf8",
+                      backgroundColor: "rgba(56, 189, 248, 0.22)",
                       boxShadow:
-                        '0 0 12px rgba(56, 189, 248, 0.5), inset 0 0 8px rgba(56, 189, 248, 0.35)',
-                      pointerEvents: 'none',
+                        "0 0 12px rgba(56, 189, 248, 0.5), inset 0 0 8px rgba(56, 189, 248, 0.35)",
+                      pointerEvents: "none",
                       zIndex: 50,
-                      transition: 'left 0.06s ease-out, top 0.06s ease-out',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
+                      transition: "left 0.06s ease-out, top 0.06s ease-out",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
                     }}
                   >
                     <span
                       style={{
-                        fontSize: '10px',
-                        fontWeight: 'bold',
-                        color: '#bae6fd',
-                        background: 'rgba(15, 23, 42, 0.75)',
-                        padding: '1px 5px',
-                        borderRadius: '4px',
+                        fontSize: "10px",
+                        fontWeight: "bold",
+                        color: "#bae6fd",
+                        background: "rgba(15, 23, 42, 0.75)",
+                        padding: "1px 5px",
+                        borderRadius: "4px",
                       }}
                     >
                       ({previewCell.gridX}, {previewCell.gridY})
@@ -767,7 +818,10 @@ export default function ActiveMap({
 
                 {/* TOKENS LAYER */}
                 {tokens.map((token, index) => {
-                  if (!token.isVisibleToPlayers && !currentParticipant?.isDungeonMaster) {
+                  if (
+                    !token.isVisibleToPlayers &&
+                    !currentParticipant?.isDungeonMaster
+                  ) {
                     return null;
                   }
 
@@ -776,7 +830,7 @@ export default function ActiveMap({
                   const top = (grid?.offsetY || 0) + token.gridY! * cellSize;
                   const draggable = canMoveToken(token);
                   const isSelected = selectedToken?.id === token.id;
-                  const tokenName = token.name || 'Token';
+                  const tokenName = token.name || "Token";
                   const tokenImageUrl = token.tokenImageUrl
                     ? getImageUrl(token.tokenImageUrl)
                     : undefined;
@@ -788,15 +842,23 @@ export default function ActiveMap({
 
                   // Color circle around the token calc
                   const hpPercent = token.maxHp
-                    ? Math.max(0, Math.min(100, ((token.currentHp ?? 0) / token.maxHp) * 100))
+                    ? Math.max(
+                        0,
+                        Math.min(
+                          100,
+                          ((token.currentHp ?? 0) / token.maxHp) * 100,
+                        ),
+                      )
                     : 0;
-                  const hpColor = hpPercent > 30 ? '#2dc653' : '#d90429';
-                  const ringWidth = Math.max(3, Math.round(size * 0.02));
-                  const hpAngle = hpPercent * 3.6;
+                  const hpColor = hpPercent > 30 ? "#2dc653" : "#d90429";
+                  const ringWidth = Math.max(3, Math.round(size * 0.02)); // ring thickness in px
+                  const hpAngle = hpPercent * 3.6; // 0-360deg
 
                   const stackIndex = tokens
                     .slice(0, index)
-                    .filter((t) => t.gridX === token.gridX && t.gridY === token.gridY).length;
+                    .filter(
+                      (t) => t.gridX === token.gridX && t.gridY === token.gridY,
+                    ).length;
 
                   const baseZ = 10 + index + stackIndex;
 
@@ -808,37 +870,41 @@ export default function ActiveMap({
                       onDragStart={(event) => handleDragStart(event, token)}
                       onDragEnd={handleDragEnd}
                       onClick={() => {
-                        if (currentParticipant?.isDungeonMaster) {
+                        if (
+                          currentParticipant?.isDungeonMaster ||
+                          token.characterId ===
+                            currentParticipant?.selectedCharacterId
+                        ) {
                           setSelectedToken(token);
                         }
                       }}
                       title={`${tokenName} (${token.currentHp}/${token.maxHp} HP)`}
                       style={{
-                        position: 'absolute',
+                        position: "absolute",
                         left: `${left}px`,
                         top: `${top}px`,
                         zIndex: isSelected ? 1000 : baseZ,
                         width: `${size}px`,
                         height: `${size}px`,
-                        borderRadius: '50%',
+                        borderRadius: "50%",
                         background: getTokenBackgroundColor(tokenName),
                         border: isSelected
-                          ? '3px solid #f59e0b'
+                          ? "3px solid #f59e0b"
                           : draggable
-                            ? '2px solid #52b788'
-                            : '2px solid #444',
+                            ? "2px solid #52b788"
+                            : "2px solid #444",
                         boxShadow: isSelected
-                          ? '0 0 12px #f59e0b, inset 0 0 10px rgba(0,0,0,0.8)'
-                          : '0 3px 8px rgba(0,0,0,0.7), inset 0 0 8px rgba(0,0,0,0.7)',
-                        cursor: draggable ? 'grab' : 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '3px 0',
-                        boxSizing: 'border-box',
-                        overflow: 'hidden',
-                        userSelect: 'none',
+                          ? "0 0 12px #f59e0b, inset 0 0 10px rgba(0,0,0,0.8)"
+                          : "0 3px 8px rgba(0,0,0,0.7), inset 0 0 8px rgba(0,0,0,0.7)",
+                        cursor: draggable ? "grab" : "pointer",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "3px 0",
+                        boxSizing: "border-box",
+                        overflow: "hidden",
+                        userSelect: "none",
                       }}
                     >
                       {/* Token Image */}
@@ -848,16 +914,18 @@ export default function ActiveMap({
                           alt={tokenName}
                           draggable={false}
                           onError={() => {
-                            setFailedTokenImages((prev) => new Set(prev).add(token.id!));
+                            setFailedTokenImages((prev) =>
+                              new Set(prev).add(token.id!),
+                            );
                           }}
                           style={{
-                            position: 'absolute',
+                            position: "absolute",
                             inset: 0,
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover',
-                            borderRadius: '50%',
-                            pointerEvents: 'none',
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            borderRadius: "50%",
+                            pointerEvents: "none",
                             zIndex: 1,
                           }}
                         />
@@ -867,16 +935,17 @@ export default function ActiveMap({
                       {!hasImage && (
                         <span
                           style={{
-                            position: 'absolute',
-                            top: '50%',
-                            left: '50%',
-                            transform: 'translate(-50%, -60%)',
+                            position: "absolute",
+                            top: "50%",
+                            left: "50%",
+                            transform: "translate(-50%, -60%)",
                             fontSize: `${Math.max(12, size * 0.35)}px`,
                             fontWeight: 900,
-                            color: '#f8fafc',
-                            textShadow: '0 2px 4px rgba(0,0,0,0.9), 0 0 2px #000',
-                            letterSpacing: '0.5px',
-                            pointerEvents: 'none',
+                            color: "#f8fafc",
+                            textShadow:
+                              "0 2px 4px rgba(0,0,0,0.9), 0 0 2px #000",
+                            letterSpacing: "0.5px",
+                            pointerEvents: "none",
                           }}
                         >
                           {getTokenInitials(tokenName)}
@@ -886,23 +955,23 @@ export default function ActiveMap({
                       {/* Name banner */}
                       <div
                         style={{
-                          position: 'relative',
+                          position: "relative",
                           zIndex: 3,
-                          marginTop: 'auto',
-                          width: '92%',
-                          textAlign: 'center',
+                          marginTop: "auto",
+                          width: "92%",
+                          textAlign: "center",
                           fontSize: `${Math.max(9, Math.min(12, size * 0.18))}px`,
                           fontWeight: 600,
-                          color: '#ffffff',
-                          textShadow: '0 1px 2px #000, 0 0 4px #000',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          background: 'rgba(0, 0, 0, 0.65)',
-                          borderRadius: '3px',
-                          padding: '1px 3px',
-                          marginBottom: '2px',
-                          pointerEvents: 'none',
+                          color: "#ffffff",
+                          textShadow: "0 1px 2px #000, 0 0 4px #000",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          background: "rgba(0, 0, 0, 0.65)",
+                          borderRadius: "3px",
+                          padding: "1px 3px",
+                          marginBottom: "2px",
+                          pointerEvents: "none",
                         }}
                       >
                         {tokenName}
@@ -911,9 +980,9 @@ export default function ActiveMap({
                       {/* Circular health ring */}
                       <div
                         style={{
-                          position: 'absolute',
+                          position: "absolute",
                           inset: 0,
-                          borderRadius: '50%',
+                          borderRadius: "50%",
                           background: `conic-gradient(
                             from 0deg,
                             ${hpColor} 0deg ${hpAngle}deg,
@@ -921,7 +990,7 @@ export default function ActiveMap({
                           )`,
                           WebkitMask: `radial-gradient(farthest-side, transparent calc(100% - ${ringWidth}px), #000 calc(100% - ${ringWidth}px + 1px))`,
                           mask: `radial-gradient(farthest-side, transparent calc(100% - ${ringWidth}px), #000 calc(100% - ${ringWidth}px + 1px))`,
-                          pointerEvents: 'none',
+                          pointerEvents: "none",
                           zIndex: 2,
                         }}
                       />
@@ -939,12 +1008,12 @@ export default function ActiveMap({
         <div
           ref={tokenBoxWrapperRef}
           style={{
-            position: 'absolute',
-            top: '50px', // Starts below the 50px top bar
+            position: "absolute",
+            top: "50px", // Starts below the 50px top bar
             right: 0,
             width: 0, // <-- Zero width so it NEVER blocks the map or zoom controls when closed!
-            height: 'calc(100% - 50px)',
-            overflow: 'visible',
+            height: "calc(100% - 50px)",
+            overflow: "visible",
             zIndex: 200,
           }}
         >
@@ -952,12 +1021,40 @@ export default function ActiveMap({
             key={tokenBoxResetKey}
             sessionId={sessionId}
             selectedToken={selectedToken}
+            selectedCharacterId={currentParticipant?.selectedCharacterId}
+            playerId={currentParticipant?.playerId}
+            isDungeonMaster={Boolean(currentParticipant?.isDungeonMaster)}
             onCloseInspector={() => setSelectedToken(undefined)}
             onHpChanged={(id: string, newHp: number) => {
               setTokens((prev) =>
                 prev.map((token) =>
                   token.id === id ? { ...token, currentHp: newHp } : token,
                 ),
+              );
+              setSelectedToken((prev) =>
+                prev?.id === id ? { ...prev, currentHp: newHp } : prev,
+              );
+            }}
+            onCharacterUpdated={(character: CharacterDto) => {
+              setTokens((prev) =>
+                prev.map((token) =>
+                  token.characterId === character.id
+                    ? {
+                        ...token,
+                        currentHp: character.currentHp,
+                        maxHp: character.maxHp,
+                      }
+                    : token,
+                ),
+              );
+              setSelectedToken((prev) =>
+                prev?.characterId === character.id
+                  ? {
+                      ...prev,
+                      currentHp: character.currentHp,
+                      maxHp: character.maxHp,
+                    }
+                  : prev,
               );
             }}
             onTokenDeleted={(id: string) => {
@@ -972,16 +1069,16 @@ export default function ActiveMap({
 }
 
 const buttonStyle: CSSProperties = {
-  width: '32px',
-  height: '32px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: '#2b2b2b',
-  color: '#ffffff',
-  border: '1px solid #444',
-  borderRadius: '4px',
-  cursor: 'pointer',
-  fontSize: '16px',
-  fontWeight: 'bold',
+  width: "32px",
+  height: "32px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#2b2b2b",
+  color: "#ffffff",
+  border: "1px solid #444",
+  borderRadius: "4px",
+  cursor: "pointer",
+  fontSize: "16px",
+  fontWeight: "bold",
 };
