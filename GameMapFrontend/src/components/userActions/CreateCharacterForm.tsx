@@ -14,6 +14,9 @@ import type {
 } from "../../model";
 import Dropdown from "../atoms/Dropdown";
 
+import TokenImagePicker from "./TokenImagePicker";
+
+
 type Props = {
   sessionId: string;
   playerId: string;
@@ -34,6 +37,8 @@ export default function CreateCharacterForm({
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
 
   const [error, setError] = useState("");
+
+  const [tokenImage, setTokenImage] = useState<string | null>(null);
 
   const createCharacter = usePostApiCharacter();
 
@@ -81,7 +86,7 @@ export default function CreateCharacterForm({
       gameSessionId: sessionId,
       name: name.trim(),
       ownerPlayerId: playerId,
-      tokenImageUrl: classIndex + ".png",
+      tokenImageUrl: tokenImage,
       classIndex,
       raceIndex,
       maxHp,
@@ -100,6 +105,7 @@ export default function CreateCharacterForm({
       setRaceIndex("");
       setCharacterPassword("");
       setPasswordConfirmation("");
+      setTokenImage(null);
 
       await onCreated();
       setIsOpen(false);
@@ -219,6 +225,11 @@ export default function CreateCharacterForm({
                 required
               />
             </div>
+          </div>
+          {/* Token Bild picker*/}
+          <div>
+            <label className="block text-sm font-medium mb-1">Token-Bild</label>
+            <TokenImagePicker value={tokenImage} onChange={setTokenImage} />
           </div>
 
           {/* Automatische Werte */}

@@ -13,16 +13,20 @@ public interface ICharacterService
     Task<CharacterDto?> UpdateCurrentHpAsync(Guid id, string playerId, int newHp);
     Task<LevelUpCharacterResult?> LevelUpAsync(Guid id, string playerId);
     Task<bool> DeleteCharacterAsync(Guid id);
+    IReadOnlyList<string> ListTokenImages();
+    Task<CharacterDto?> SetTokenImageAsync(Guid id, string playerId, string? path);
 }
 
 public class CharacterService : ICharacterService
 {
     private readonly AppDbContext _context;
+    private readonly IWebHostEnvironment _env;
     private readonly PasswordHasher<CharacterEntity> _passwordHasher = new();
 
-    public CharacterService(AppDbContext context)
+    public CharacterService(AppDbContext context, IWebHostEnvironment env)
     {
         _context = context;
+        _env = env;
     }
 
     public async Task<List<CharacterDto>> GetCharactersBySessionAsync(Guid sessionId)
@@ -46,7 +50,7 @@ public class CharacterService : ICharacterService
         {
             GameSessionId = dto.GameSessionId,
             Name = dto.Name,
-            TokenImageUrl = dto.TokenImageUrl,
+            TokenImageUrl = NormalizeImage(dto.TokenImageUrl),
             OwnerPlayerId = dto.OwnerPlayerId,
             ClassIndex = dto.ClassIndex,
             RaceIndex = dto.RaceIndex,
@@ -109,6 +113,61 @@ public class CharacterService : ICharacterService
 
         return new LevelUpCharacterResult(MapToDto(character), hitDie, hitPointRoll);
     }
+
+    //  token images for characters
+
+    private static readonly string[] AllowedExt = { ".png", ".jpg", ".jpeg", ".webp" };
+
+    private string ImageDir => Path.Combine(
+        string.IsNullOrWhiteSpace(_env.WebRootPath)
+            ? Path.Combine(_env.ContentRootPath, "wwwroot")
+            : _env.WebRootPath,
+        "tokens", "characters");
+
+    public IReadOnlyList<string> ListTokenImages()
+    {
+        if (!Directory.Exists(ImageDir)) return Array.Empty<string>();
+
+        return Directory.EnumerateFiles(ImageDir)
+            .Where(f => AllowedExt.Contains(Path.GetExtension(f).ToLowerInvariant()))
+            .Select(f => $"/tokens/characters/{Path.GetFileName(f)}")
+            .OrderBy(p => p)
+            .ToList();
+    }
+
+    private string? NormalizeImage(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+
+        var fileName = Path.GetFileName(path);   // strips any "../"
+        if (!AllowedExt.Contains(Path.GetExtension(fileName).ToLowerInvariant())) return null;
+        if (!File.Exists(Path.Combine(ImageDir, fileName))) return null;
+
+        return $"/tokens/characters/{fileName}";
+    }
+
+    public async Task<CharacterDto?> SetTokenImageAsync(Guid id, string playerId, string? path)
+    {
+        var character = await _context.Characters.FindAsync(id);
+        if (character == null) return null;
+
+        var allowed = character.OwnerPlayerId == playerId
+                      || await IsSelectedByPlayerAsync(character, playerId);
+        if (!allowed) return null;
+
+        character.TokenImageUrl = NormalizeImage(path);  
+
+        var tokens = await _context.MapTokens
+            .Where(t => t.CharacterId == character.Id)
+            .ToListAsync();
+        foreach (var token in tokens)
+            token.TokenImageUrl = character.TokenImageUrl;
+
+        await _context.SaveChangesAsync();
+        return MapToDto(character);
+    }
+
+    // exists
 
     private Task<bool> IsSelectedByPlayerAsync(CharacterEntity character, string playerId) =>
         _context.SessionParticipants.AnyAsync(participant =>

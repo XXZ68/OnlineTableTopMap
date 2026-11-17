@@ -80,6 +80,24 @@ public class CharacterController : ControllerBase
         return Ok(updated);
     }
 
+    [HttpGet("token-images")]
+    public ActionResult<IReadOnlyList<string>> ListTokenImages() =>
+    Ok(_characterService.ListTokenImages());
+
+    [HttpPut("{id:guid}/token-image")]
+    public async Task<ActionResult<CharacterDto>> SetTokenImage(
+        Guid id,
+        [FromQuery] string playerId,
+        [FromBody] SetTokenImageDto dto)
+    {
+        var updated = await _characterService.SetTokenImageAsync(id, playerId, dto.Path);
+        if (updated == null) return NotFound();
+
+        await _hubContext.Clients.Group(updated.GameSessionId.ToString()).CharacterUpdated(updated);
+        return Ok(updated);
+    }
+    public record SetTokenImageDto(string? Path);
+
     /// <summary>
     /// Levels up a character and increases its HP by a server-rolled class Hit Die.
     /// </summary>

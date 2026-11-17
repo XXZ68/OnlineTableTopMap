@@ -84,7 +84,7 @@ export default function ActiveMap({
   const isDraggingRef = useRef<boolean>(false);
 
   // State of images
-  const [failedTokenImages, setFailedTokenImages] = useState<Set<string>>(
+  const [failedImageUrls, setFailedImageUrls] = useState<Set<string>>(
     new Set(),
   );
 
@@ -234,20 +234,22 @@ export default function ActiveMap({
         prev.map((token) =>
           token.characterId === character.id
             ? {
-                ...token,
-                currentHp: character.currentHp,
-                maxHp: character.maxHp,
-              }
+              ...token,
+              currentHp: character.currentHp,
+              maxHp: character.maxHp,
+              tokenImageUrl: character.tokenImageUrl,
+            }
             : token,
         ),
       );
       setSelectedToken((prev) =>
         prev?.characterId === character.id
           ? {
-              ...prev,
-              currentHp: character.currentHp,
-              maxHp: character.maxHp,
-            }
+            ...prev,
+            currentHp: character.currentHp,
+            maxHp: character.maxHp,
+            tokenImageUrl: character.tokenImageUrl,
+          }
           : prev,
       );
     });
@@ -289,6 +291,7 @@ export default function ActiveMap({
         "TokenMoved",
         "TokenSpawned",
         "TokenHpChanged",
+        "CharacterUpdated",
         "TokenRemoved",
         "GridUpdated",
         "SpellCasted",
@@ -335,12 +338,12 @@ export default function ActiveMap({
     const paddedWidth = Math.max(
       mapData.widthInPixels,
       offsetX +
-        Math.ceil((mapData.widthInPixels - offsetX) / cellSize) * cellSize,
+      Math.ceil((mapData.widthInPixels - offsetX) / cellSize) * cellSize,
     );
     const paddedHeight = Math.max(
       mapData.heightInPixels,
       offsetY +
-        Math.ceil((mapData.heightInPixels - offsetY) / cellSize) * cellSize,
+      Math.ceil((mapData.heightInPixels - offsetY) / cellSize) * cellSize,
     );
 
     const canvasX = ((event.clientX - rect.left) / rect.width) * paddedWidth;
@@ -832,22 +835,23 @@ export default function ActiveMap({
                     : undefined;
 
                   const hasImage =
-                    Boolean(tokenImageUrl) &&
-                    Boolean(token.id) &&
-                    !failedTokenImages.has(token.id!);
+                    Boolean(tokenImageUrl) && !failedImageUrls.has(tokenImageUrl!);
 
                   // Color circle around the token calc
                   const hpPercent = token.maxHp
                     ? Math.max(
-                        0,
-                        Math.min(
-                          100,
-                          ((token.currentHp ?? 0) / token.maxHp) * 100,
-                        ),
-                      )
+                      0,
+                      Math.min(
+                        100,
+                        ((token.currentHp ?? 0) / token.maxHp) * 100,
+                      ),
+                    )
                     : 0;
-                  const hpColor = hpPercent > 30 ? "#2dc653" : "#d90429";
-                  const ringWidth = Math.max(3, Math.round(size * 0.02)); // ring thickness in px
+                  const hpColor =
+                    hpPercent > 50 ? "#2dc653"
+                      : hpPercent >= 25 ? "#f4c20d"
+                        : "#d90429";
+                  const ringWidth = Math.max(3, Math.round(size * 0.04)); // ring thickness in px
                   const hpAngle = hpPercent * 3.6; // 0-360deg
 
                   const stackIndex = tokens
@@ -869,7 +873,7 @@ export default function ActiveMap({
                         if (
                           currentParticipant?.isDungeonMaster ||
                           token.characterId ===
-                            currentParticipant?.selectedCharacterId
+                          currentParticipant?.selectedCharacterId
                         ) {
                           setSelectedToken(token);
                         }
@@ -910,8 +914,8 @@ export default function ActiveMap({
                           alt={tokenName}
                           draggable={false}
                           onError={() => {
-                            setFailedTokenImages((prev) =>
-                              new Set(prev).add(token.id!),
+                            setFailedImageUrls((prev) =>
+                              new Set(prev).add(tokenImageUrl!),
                             );
                           }}
                           style={{
@@ -1036,20 +1040,22 @@ export default function ActiveMap({
                 prev.map((token) =>
                   token.characterId === character.id
                     ? {
-                        ...token,
-                        currentHp: character.currentHp,
-                        maxHp: character.maxHp,
-                      }
+                      ...token,
+                      currentHp: character.currentHp,
+                      maxHp: character.maxHp,
+                      tokenImageUrl: character.tokenImageUrl,
+                    }
                     : token,
                 ),
               );
               setSelectedToken((prev) =>
                 prev?.characterId === character.id
                   ? {
-                      ...prev,
-                      currentHp: character.currentHp,
-                      maxHp: character.maxHp,
-                    }
+                    ...prev,
+                    currentHp: character.currentHp,
+                    maxHp: character.maxHp,
+                    tokenImageUrl: character.tokenImageUrl,
+                  }
                   : prev,
               );
             }}
