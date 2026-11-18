@@ -5,13 +5,12 @@ import {
 import Modal from '../atoms/Modal'
 import TextInput from '../atoms/TextInput'
 import Button from '../atoms/Button'
-import { postApiGameSessionSessionIdAddMapMapId, useGetApiMap } from '../../api'
+import {
+  postApiGameSession,
+  postApiGameSessionSessionIdAddMapMapId,
+  useGetApiMap,
+} from '../../api'
 import { MapSummaryDto } from '../../model'
-
-type GameSession = {
-  id: string
-  joinCode: string
-}
 
 type SelectedMap = MapSummaryDto & {
   isStarting: boolean
@@ -110,6 +109,7 @@ export default function CreateCampaign({
     event: FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault()
+    setError(null)
 
     const startingMap =
       selectedMaps.find((map) => map.isStarting) ??
@@ -121,43 +121,40 @@ export default function CreateCampaign({
     }
 
     try {
-      const response = await fetch('/api/GameSession', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      })
+      const response = await postApiGameSession(payload)
+      const gameSession = response.data
 
-      if (response.ok) {
-        const gameSession: GameSession =
-          await response.json()
+      if (!gameSession.id) {
+        throw new Error('The created session has no ID.')
+      }
 
-        const auxiliaryMaps = selectedMaps.filter(
-          (map) => map.id !== startingMap?.id,
-        )
+      const auxiliaryMaps = selectedMaps.filter(
+        (map) => map.id !== startingMap?.id,
+      )
 
-        for (const auxMap of auxiliaryMaps) {
-          if (!auxMap.id) {
-            throw new Error('Selected map has no ID.')
-          }
-
-          await postApiGameSessionSessionIdAddMapMapId(
-            gameSession.id,
-            auxMap.id,
-          )
+      for (const auxMap of auxiliaryMaps) {
+        if (!auxMap.id) {
+          throw new Error('Selected map has no ID.')
         }
 
-        alert(
-          `Lobby created! Room Code: ${gameSession.joinCode}`,
+        await postApiGameSessionSessionIdAddMapMapId(
+          gameSession.id,
+          auxMap.id,
         )
-
-        onClose()
-      } else {
-        alert('Failed to create game session.')
       }
+
+      alert(
+        `Lobby created! Room Code: ${gameSession.joinCode ?? ''}`,
+      )
+
+      onClose()
     } catch (error: unknown) {
       console.error('Error starting lobby:', error)
+      setError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to create game session.',
+      )
     }
   }
 
@@ -179,6 +176,12 @@ export default function CreateCampaign({
         className="space-y-4"
         onSubmit={handleLaunchLobby}
       >
+        {error && (
+          <p className="text-sm text-red-500" role="alert">
+            {error}
+          </p>
+        )}
+
         {/* Campaign Name Input */}
         <div>
           <p className="block text-sm font-medium">

@@ -1,10 +1,11 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useGetApiMap } from '../../api'
-import type { GameSessionDto, MapSummaryDto } from '../../model'
+import { postApiGameSession, useGetApiMap } from '../../api'
+import type { MapSummaryDto } from '../../model'
 import TextInput from '../atoms/TextInput'
 import Modal from '../atoms/Modal'
 import Button from '../atoms/Button'
+import { getImageUrl } from '../../utils/imageUrl'
 
 type CurrentUser = {
   userId: string
@@ -32,6 +33,7 @@ export default function CreateGame({
 
   // Map picker state
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false)
+  const [previewMapId, setPreviewMapId] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const {
     data: mapsData,
@@ -43,12 +45,18 @@ export default function CreateGame({
   const filteredMaps = availableMaps.filter((map) =>
     (map.title ?? '').toLowerCase().includes(searchTerm.toLowerCase()),
   )
+  const previewMap = availableMaps.find((map) => map.id === previewMapId)
 
   // Request status states
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
-  const mapPickerLabel = isMapPickerOpen ? 'Close' : 'Browse Maps'
+  const mapPickerLabel = 'Browse Maps'
+
+  const handleOpenMapPicker = () => {
+    setPreviewMapId(selectedMapId || availableMaps[0]?.id || '')
+    setIsMapPickerOpen(true)
+  }
 
   const handleSelectMap = (map: MapSummaryDto | null) => {
     if (map) {
@@ -80,22 +88,12 @@ export default function CreateGame({
         initialMapId: selectedMapId || null,
       }
 
-      const response = await fetch('/api/GameSession', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      })
+      const response = await postApiGameSession(payload)
+      const createdSession = response.data
 
-      if (!response.ok) {
-        const details = await response.text()
-        throw new Error(
-          `Failed to create session (HTTP ${response.status})${details ? `: ${details}` : ''}`,
-        )
+      if (!createdSession.id) {
+        throw new Error('The created session has no ID.')
       }
-
-      const createdSession: GameSessionDto = await response.json()
 
       const roomCode = createdSession.joinCode ?? ''
 
@@ -126,69 +124,144 @@ export default function CreateGame({
     }
   }
 
-  let mapPickerContent: ReactNode
-
-  if (isLoadingMaps) {
-    mapPickerContent = (
-      <p className="text-xs p-2">
-        Loading maps...
-      </p>
-    )
-  } else if (mapsError) {
-    const message = mapsError instanceof Error
-      ? mapsError.message
-      : 'Failed to retrieve maps.'
-
-    mapPickerContent = (
-      <p role="alert" className="text-xs text-red-500 p-2">
-        {message}
-      </p>
-    )
-  } else if (filteredMaps.length === 0) {
-    const message = availableMaps.length === 0
-      ? 'No uploaded maps found.'
-      : 'No matching maps found.'
-
-    mapPickerContent = (
-      <p className="text-xs p-2">
-        {message}
-      </p>
-    )
-  } else {
-    mapPickerContent = filteredMaps.map((map) => (
-      <button
-        key={map.id}
-        type="button"
-        disabled={isLoading || !map.id}
-        onClick={() => handleSelectMap(map)}
-        className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-slate-900 flex items-center justify-between ${
-          selectedMapId === map.id
-            ? 'bg-blue-100 font-semibold'
-            : ''
-        }`}
-      >
-        <span>{map.title || 'Unnamed Map'}</span>
-
-        <span className="text-xs text-gray-400">
-          {map.widthInPixels}×{map.heightInPixels}px
-        </span>
-      </button>
-    ))
-  }
-
   return (
-    <Modal isOpen={isOpen} onClose={onClose}>
-      <h2 className="text-xl font-bold mb-4">
-        Create New Game Session
-      </h2>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      panelClassName={isMapPickerOpen ? 'max-w-6xl max-h-[calc(100dvh-2rem)] overflow-y-auto' : undefined}
+    >
+      {isMapPickerOpen ? (
+        <div className="text-left">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="mb-1 text-sm font-semibold uppercase text-accent-special">
+                Map library
+              </p>
+              <h2 className="text-xl font-bold text-primary-text">
+                Browse Maps
+              </h2>
+            </div>
+            <span className="text-sm text-secondary-text">
+              {filteredMaps.length} {filteredMaps.length === 1 ? 'map' : 'maps'}
+            </span>
+          </div>
 
-      {errorMessage && (
-        <div className="mb-4 p-2 text-sm text-red-700 bg-red-100 rounded border border-red-300">
-          {errorMessage}
+          <TextInput
+            type="search"
+            aria-label="Search saved maps"
+            placeholder="Search map titles..."
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            className="mb-4 w-full p-2"
+          />
+
+          <div className="grid min-w-0 gap-5 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+            <div className="min-w-0">
+              {isLoadingMaps ? (
+                <p className="py-4 text-sm text-secondary-text">Loading maps...</p>
+              ) : mapsError ? (
+                <p role="alert" className="py-4 text-sm text-red-500">
+                  {mapsError instanceof Error
+                    ? mapsError.message
+                    : 'Failed to retrieve maps.'}
+                </p>
+              ) : filteredMaps.length === 0 ? (
+                <p className="py-4 text-sm text-secondary-text">
+                  {availableMaps.length === 0
+                    ? 'No uploaded maps found.'
+                    : 'No matching maps found.'}
+                </p>
+              ) : (
+                <ul className="max-h-[48vh] space-y-2 overflow-y-auto pr-1">
+                  {filteredMaps.map((map) => {
+                    const mapId = map.id
+                    if (!mapId) return null
+
+                    const isPreviewed = previewMapId === mapId
+
+                    return (
+                      <li key={mapId}>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewMapId(mapId)}
+                          className={`w-full rounded-md border p-3 text-left transition-colors ${
+                            isPreviewed
+                              ? 'border-accent-special bg-accent-special/10'
+                              : 'border-secondary-bg hover:bg-secondary-bg'
+                          }`}
+                        >
+                          <span className="block truncate font-semibold text-primary-text">
+                            {map.title || 'Unnamed Map'}
+                          </span>
+                          <span className="mt-1 block text-xs text-secondary-text">
+                            {map.widthInPixels}×{map.heightInPixels}px
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <div className="min-w-0">
+              <div className="mb-2 flex items-baseline justify-between gap-3">
+                <h3 className="truncate font-semibold text-primary-text">
+                  {previewMap?.title || 'Map preview'}
+                </h3>
+                {previewMap && (
+                  <span className="shrink-0 text-xs text-secondary-text">
+                    {previewMap.widthInPixels}×{previewMap.heightInPixels}px
+                  </span>
+                )}
+              </div>
+              <div className="grid aspect-video place-items-center overflow-hidden rounded-md border border-secondary-bg bg-primary-bg">
+                {previewMap?.imageUrl ? (
+                  <img
+                    src={getImageUrl(previewMap.imageUrl)}
+                    alt={previewMap.title || 'Selected battle map'}
+                    className="h-full w-full object-contain"
+                  />
+                ) : (
+                  <p className="px-4 text-center text-sm text-secondary-text">
+                    {previewMap ? 'Preview unavailable for this map.' : 'Select a map to preview it.'}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 flex justify-end gap-3 border-t border-secondary-bg pt-4">
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => setIsMapPickerOpen(false)}
+            >
+              Back
+            </Button>
+            <Button
+              variant="primary"
+              type="button"
+              disabled={!previewMap}
+              onClick={() => handleSelectMap(previewMap ?? null)}
+            >
+              Use map
+            </Button>
+          </div>
         </div>
-      )}
+      ) : (
+        <>
+          <h2 className="text-xl font-bold mb-4">
+            Create New Game Session
+          </h2>
 
-      <form onSubmit={handleLaunchLobby} className="space-y-4">
+          {errorMessage && (
+            <div className="mb-4 p-2 text-sm text-red-700 bg-red-100 rounded border border-red-300">
+              {errorMessage}
+            </div>
+          )}
+
+          <form onSubmit={handleLaunchLobby} className="space-y-4">
         {/* Session / Lobby Name */}
         <div>
           <label className="block text-sm font-medium text-gray-700">
@@ -267,27 +340,11 @@ export default function CreateGame({
               className="h-10 shrink-0 whitespace-nowrap"
               type="button"
               disabled={isLoading}
-              onClick={() => setIsMapPickerOpen(!isMapPickerOpen)}
+              onClick={handleOpenMapPicker}
             >
               {isLoadingMaps ? 'Loading...' : mapPickerLabel}
             </Button>
           </div>
-
-          {/* Map Picker */}
-          {isMapPickerOpen && (
-            <div className="mt-2 p-2 border baseline rounded-md shadow-lg max-h-48 overflow-y-auto space-y-1">
-              <TextInput
-                type="text"
-                aria-label="Search saved maps"
-                placeholder="Search map titles..."
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                className="w-full text-sm p-2"
-              />
-
-              {mapPickerContent}
-            </div>
-          )}
         </div>
 
         {/* Action Buttons */}
@@ -309,7 +366,9 @@ export default function CreateGame({
             Cancel
           </Button>
         </div>
-      </form>
+          </form>
+        </>
+      )}
     </Modal>
   )
 }

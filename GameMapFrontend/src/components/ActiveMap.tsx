@@ -10,6 +10,7 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import TokenBox from "./TokenBox";
 import {
   getApiMapId,
+  getApiTokenMapMapId, 
   postApiTokenMapMapIdPlaceCharacter,
   postApiTokenMapMapIdSpawnMonster,
   putApiGridMapMapId,
@@ -164,14 +165,17 @@ export default function ActiveMap({
 
     const loadMap = async () => {
       try {
-        const response = await getApiMapId(mapId);
+        const [response, tokenResponse] = await Promise.all([
+          getApiMapId(mapId),
+          getApiTokenMapMapId(mapId, { sessionId }),
+        ]);
         const data = response.data as MapDetailDto;
         console.log(data);
         if (!isMounted) return;
 
         setMapData(data);
         setGrid(data.grid);
-        setTokens(data.tokens || []);
+        setTokens(tokenResponse.data);
         setActiveSpells(data.activeSpells || []);
         setError(null);
       } catch (err: unknown) {
@@ -1003,69 +1007,67 @@ export default function ActiveMap({
         )}
       </TransformWrapper>
 
-      {/* GM TOKENBOX DRAWER WRAPPER (Zero-width anchor at right edge so there is NO deadzone when closed!) */}
-      {currentParticipant?.isDungeonMaster && (
-        <div
-          ref={tokenBoxWrapperRef}
-          style={{
-            position: "absolute",
-            top: "50px", // Starts below the 50px top bar
-            right: 0,
-            width: 0, // <-- Zero width so it NEVER blocks the map or zoom controls when closed!
-            height: "calc(100% - 50px)",
-            overflow: "visible",
-            zIndex: 200,
+      {/* TOKENBOX DRAWER WRAPPER (Zero-width anchor at right edge so there is NO deadzone when closed!) */}
+      <div
+        ref={tokenBoxWrapperRef}
+        style={{
+          position: "absolute",
+          top: "50px", // Starts below the 50px top bar
+          right: 0,
+          width: 0, // <-- Zero width so it NEVER blocks the map or zoom controls when closed!
+          height: "calc(100% - 50px)",
+          overflow: "visible",
+          zIndex: 200,
+        }}
+      >
+        <TokenBox
+          key={tokenBoxResetKey}
+          sessionId={sessionId}
+          selectedToken={selectedToken}
+          selectedCharacterId={currentParticipant?.selectedCharacterId}
+          playerId={currentParticipant?.playerId}
+          isDungeonMaster={Boolean(currentParticipant?.isDungeonMaster)}
+          onCloseInspector={() => setSelectedToken(undefined)}
+          onHpChanged={(id: string, newHp: number) => {
+            setTokens((prev) =>
+              prev.map((token) =>
+                token.id === id ? { ...token, currentHp: newHp } : token,
+              ),
+            );
+            setSelectedToken((prev) =>
+              prev?.id === id ? { ...prev, currentHp: newHp } : prev,
+            );
           }}
-        >
-          <TokenBox
-            key={tokenBoxResetKey}
-            sessionId={sessionId}
-            selectedToken={selectedToken}
-            selectedCharacterId={currentParticipant?.selectedCharacterId}
-            playerId={currentParticipant?.playerId}
-            isDungeonMaster={Boolean(currentParticipant?.isDungeonMaster)}
-            onCloseInspector={() => setSelectedToken(undefined)}
-            onHpChanged={(id: string, newHp: number) => {
-              setTokens((prev) =>
-                prev.map((token) =>
-                  token.id === id ? { ...token, currentHp: newHp } : token,
-                ),
-              );
-              setSelectedToken((prev) =>
-                prev?.id === id ? { ...prev, currentHp: newHp } : prev,
-              );
-            }}
-            onCharacterUpdated={(character: CharacterDto) => {
-              setTokens((prev) =>
-                prev.map((token) =>
-                  token.characterId === character.id
-                    ? {
-                      ...token,
-                      currentHp: character.currentHp,
-                      maxHp: character.maxHp,
-                      tokenImageUrl: character.tokenImageUrl,
-                    }
-                    : token,
-                ),
-              );
-              setSelectedToken((prev) =>
-                prev?.characterId === character.id
+          onCharacterUpdated={(character: CharacterDto) => {
+            setTokens((prev) =>
+              prev.map((token) =>
+                token.characterId === character.id
                   ? {
-                    ...prev,
+                    ...token,
                     currentHp: character.currentHp,
                     maxHp: character.maxHp,
                     tokenImageUrl: character.tokenImageUrl,
                   }
-                  : prev,
-              );
-            }}
-            onTokenDeleted={(id: string) => {
-              setTokens((prev) => prev.filter((token) => token.id !== id));
-              setSelectedToken(undefined);
-            }}
-          />
-        </div>
-      )}
+                  : token,
+              ),
+            );
+            setSelectedToken((prev) =>
+              prev?.characterId === character.id
+                ? {
+                  ...prev,
+                  currentHp: character.currentHp,
+                  maxHp: character.maxHp,
+                  tokenImageUrl: character.tokenImageUrl,
+                }
+                : prev,
+            );
+          }}
+          onTokenDeleted={(id: string) => {
+            setTokens((prev) => prev.filter((token) => token.id !== id));
+            setSelectedToken(undefined);
+          }}
+        />
+      </div>
     </div>
   );
 }

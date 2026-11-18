@@ -223,11 +223,11 @@ export default function Game() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen w-screen items-center justify-center bg-[#090a0f] text-[#edf2f7]">
-        <div className="flex items-center gap-3 text-sm font-semibold tracking-wide">
+      <div className="flex min-h-screen w-screen items-center justify-center bg-primary-bg text-primary-text">
+        <div className="flex items-center gap-3 text-sm font-semibold">
           <span
             aria-hidden="true"
-            className="size-5 animate-spin rounded-full border-2 border-[#f2c078]/25 border-t-[#f2c078]"
+            className="size-5 animate-spin rounded-full border-2 border-accent-special/25 border-t-accent-special"
           />
           {' '}
           Connecting to game server...
@@ -238,16 +238,26 @@ export default function Game() {
 
   if (errorMessage) {
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
-        <p role="alert">Failed to load game: {errorMessage}</p>
+      <main className="flex min-h-screen items-center justify-center bg-primary-bg p-6 text-primary-text">
+        <div className="w-full max-w-lg rounded-lg border border-secondary-bg bg-secondary-bg p-6 text-left shadow-custom">
+          <p className="mb-2 text-sm font-semibold uppercase text-red-500">Connection error</p>
+          <p role="alert" className="text-sm text-secondary-text">
+            Failed to load game: {errorMessage}
+          </p>
+        </div>
       </main>
     )
   }
 
   if (!currentParticipant) {
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
-        <p role="alert">Join this game with its room code or sign in as its Dungeon Master.</p>
+      <main className="flex min-h-screen items-center justify-center bg-primary-bg p-6 text-primary-text">
+        <div className="w-full max-w-lg rounded-lg border border-secondary-bg bg-secondary-bg p-6 text-left shadow-custom">
+          <p className="mb-2 text-sm font-semibold uppercase text-accent-special">Access needed</p>
+          <p role="alert" className="text-sm text-secondary-text">
+            Join this game with its room code or sign in as its Dungeon Master.
+          </p>
+        </div>
       </main>
     )
   }
@@ -273,7 +283,7 @@ export default function Game() {
       />
 
       {actionError && (
-        <p role="alert" className="absolute top-24 left-4 right-4 z-[110] rounded border border-red-500 bg-red-950 p-3 text-sm text-white">
+        <p role="alert" className="absolute top-24 left-4 right-4 z-[110] rounded-md border border-red-500 bg-primary-bg p-3 text-sm text-red-500 shadow-custom">
           {actionError}
         </p>
       )}
@@ -288,21 +298,21 @@ export default function Game() {
           connection={connection}
         />
       ) : (
-        <div className="absolute inset-0 flex flex-col items-center justify-center overflow-y-auto bg-[radial-gradient(ellipse_at_center,_rgba(33,47,55,0.72)_0%,_#090a0f_68%)] px-6 pb-24 pt-28 text-center text-[#f8fafc]">
-          <div className="mb-6 grid size-16 place-items-center rounded-xl border border-[#f2c078]/25 bg-[#f2c078]/[0.07] text-3xl text-[#f2c078] shadow-[0_12px_36px_rgba(0,0,0,0.24)]" aria-hidden="true">
+        <div className="absolute inset-0 flex flex-col items-center justify-center overflow-y-auto bg-primary-bg px-6 pb-24 pt-28 text-center text-primary-text">
+          <div className="mb-6 grid size-16 place-items-center rounded-lg border border-accent-special/25 bg-accent-special/10 text-3xl text-accent-special shadow-custom" aria-hidden="true">
             ⚔
           </div>
-          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-[#f2c078]">
+          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-accent-special">
             Map library
           </p>
-          <h1 className="mb-3 text-3xl font-semibold text-[#f8fafc] sm:text-4xl">
+          <h1 className="mb-3 text-3xl font-semibold text-primary-text sm:text-4xl">
             {session ? 'No map selected' : 'No battle maps yet'}
           </h1>
-          <p className="max-w-[440px] text-sm leading-6 text-[#aebdca]">
-            Add a map image through <code className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[#e3c18f]">POST /api/Map</code> or open the backend tools to upload one.
+          <p className="max-w-[440px] text-sm leading-6 text-secondary-text">
+            Add a map image through <code className="rounded border border-secondary-bg bg-secondary-bg px-1.5 py-0.5 font-mono text-accent-special">POST /api/Map</code> or open the backend tools to upload one.
           </p>
           <a
-            className="mt-6 inline-flex min-h-10 items-center justify-center rounded-md border border-[#a87338] bg-[#654626] px-4 text-sm font-semibold text-[#fff4e2] transition-colors hover:bg-[#79552e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f2c078]"
+            className="mt-6 inline-flex min-h-10 items-center justify-center rounded-md border border-transparent bg-accent-special px-4 text-sm font-semibold text-white transition-colors hover:bg-accent-complementary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-special"
             href="http://localhost:5089/swagger"
             target="_blank"
             rel="noreferrer"

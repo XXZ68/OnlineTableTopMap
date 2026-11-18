@@ -5,9 +5,10 @@ type ModalProps = {
   onClose: () => void;
   children: ReactNode;
   size?: "default" | "wide";
+  panelClassName?: string;
 };
 
-function Modal({ isOpen, onClose, children, size = "default" }: ModalProps) {
+function Modal({ isOpen, onClose, children, size = "default", panelClassName }: ModalProps) {
   // Prevent background scrolling when modal is open
   useEffect(() => {
     if (isOpen) {
@@ -38,7 +39,7 @@ function Modal({ isOpen, onClose, children, size = "default" }: ModalProps) {
 
       {/* 2. Modal Content Container */}
       <div
-        className={`bg-secondary-bg relative z-10 w-full ${size === "wide" ? "max-w-xl" : "max-w-md"} rounded-lg p-6 shadow-xl transition-all m-4`}
+        className={`bg-secondary-bg relative z-10 w-full ${size === "wide" ? "max-w-xl" : "max-w-md"} rounded-lg p-6 shadow-xl transition-all ${panelClassName || 'max-w-md'}`}
       >
         {/* Close Button (X) */}
         <button
