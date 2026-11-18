@@ -26,7 +26,7 @@ In einem Terminal:
 ```powershell
 cd GameMapBackend
 dotnet restore
-dotnet tool install --version 10.0.12
+dotnet tool install --global dotnet-ef --version 10.0.12
 dotnet ef database update
 dotnet run --urls http://localhost:5089
 ```
