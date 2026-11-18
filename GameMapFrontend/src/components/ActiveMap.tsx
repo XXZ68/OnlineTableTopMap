@@ -375,7 +375,7 @@ export default function ActiveMap({
     setDraggedTokenSize(token.sizeInCells || 1);
     event.dataTransfer.setDragImage(emptyDragImage, 0, 0);
     if (token.id) {
-      event.dataTransfer.setData("text/plain", token.id);
+      event.dataTransfer.setData("application/vtt-move-token", token.id);
     }
   };
 
@@ -476,7 +476,7 @@ export default function ActiveMap({
     }
 
     // --- CASE C: Moving an Existing Board Token ---
-    const tokenId = event.dataTransfer.getData("text/plain");
+    const tokenId = event.dataTransfer.getData("application/vtt-move-token");
     if (tokenId) {
       const token = tokens.find((candidate) => candidate.id === tokenId);
       if (!token || !canMoveToken(token)) return;
