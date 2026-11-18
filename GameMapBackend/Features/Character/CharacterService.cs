@@ -193,6 +193,23 @@ public class CharacterService : ICharacterService
         var entity = await _context.Characters.FindAsync(id);
         if (entity == null) return false;
 
+        var tokens = await _context.MapTokens
+            .Where(token => token.CharacterId == id)
+            .ToListAsync();
+        _context.MapTokens.RemoveRange(tokens);
+
+        var participants = await _context.SessionParticipants
+            .Where(participant => participant.SelectedCharacterId == id)
+            .ToListAsync();
+        foreach (var participant in participants)
+            participant.SelectedCharacterId = null;
+
+        var activeSpells = await _context.ActiveSpellEffects
+            .Where(spell => spell.CasterCharacterId == id)
+            .ToListAsync();
+        foreach (var spell in activeSpells)
+            spell.CasterCharacterId = null;
+
         _context.Characters.Remove(entity);
         await _context.SaveChangesAsync();
         return true;

@@ -274,9 +274,6 @@ export default function Game() {
         onMapChange={(mapId) => {
           void handleMapChange(mapId)
         }}
-        onCreateSession={() => {
-          void navigate('/main', { state: lobbyState?.currentUser })
-        }}
         onLeaveSession={() => {
           void navigate(lobbyState?.currentUser ? '/main' : '/', { state: lobbyState?.currentUser })
         }}
